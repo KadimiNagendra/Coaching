@@ -23,6 +23,8 @@ type StudentFeeStatus = {
   currentDue: number;
 };
 
+type FeeListView = 'collected' | 'outstanding' | 'fullyPaid';
+
 const today = () => new Date().toISOString().slice(0, 10);
 const currentMonth = () => new Date().toISOString().slice(0, 7);
 const money = (value?: number) => `Rs ${Number(value ?? 0).toLocaleString('en-IN')}`;
@@ -38,6 +40,7 @@ const defaultForm = (paidAmount = 0): PaymentForm => ({
 export default function FeesPage() {
   const [feeMonth, setFeeMonth] = useState(currentMonth());
   const [selectedStatus, setSelectedStatus] = useState<StudentFeeStatus | null>(null);
+  const [listView, setListView] = useState<FeeListView | null>(null);
   const [form, setForm] = useState<PaymentForm>(defaultForm());
   const queryClient = useQueryClient();
   const { data: payments = [] } = useQuery({ queryKey: ['fees'], queryFn: api.fees });
@@ -73,6 +76,24 @@ export default function FeesPage() {
     const paidCount = studentStatuses.filter((status) => status.currentDue === 0).length;
     return { totalExpected, totalCollected, totalDue, paidCount };
   }, [studentStatuses]);
+
+  const listDialog = useMemo(() => {
+    if (!listView) return null;
+    const filters: Record<FeeListView, (status: StudentFeeStatus) => boolean> = {
+      collected: (status) => status.totalPaid > 0,
+      outstanding: (status) => status.currentDue > 0,
+      fullyPaid: (status) => status.currentDue === 0
+    };
+    const titles: Record<FeeListView, string> = {
+      collected: 'Students Who Paid',
+      outstanding: 'Students With Outstanding Due',
+      fullyPaid: 'Students Fully Paid'
+    };
+    return {
+      title: titles[listView],
+      students: studentStatuses.filter(filters[listView])
+    };
+  }, [listView, studentStatuses]);
 
   const create = useMutation({
     mutationFn: (payment: FeePayment) => api.createPayment(payment),
@@ -111,9 +132,9 @@ export default function FeesPage() {
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(4, 1fr)' }, gap: 2, mb: 2 }}>
         <StatCard label="Expected Fees" value={money(monthSummary.totalExpected)} helper={feeMonth} accent="primary" />
-        <StatCard label="Collected" value={money(monthSummary.totalCollected)} helper={`${monthPayments.length} payments`} accent="success" />
-        <StatCard label="Outstanding Due" value={money(monthSummary.totalDue)} helper="Needs collection" accent="warning" />
-        <StatCard label="Fully Paid" value={`${monthSummary.paidCount}/${studentStatuses.length}`} helper="Students cleared" accent="info" />
+        <StatCard label="Collected" value={money(monthSummary.totalCollected)} helper={`${monthPayments.length} payments`} accent="success" onClick={() => setListView('collected')} />
+        <StatCard label="Outstanding Due" value={money(monthSummary.totalDue)} helper="Needs collection" accent="warning" onClick={() => setListView('outstanding')} />
+        <StatCard label="Fully Paid" value={`${monthSummary.paidCount}/${studentStatuses.length}`} helper="Students cleared" accent="info" onClick={() => setListView('fullyPaid')} />
       </Box>
 
       <Card sx={{ mb: 2 }}>
@@ -209,6 +230,46 @@ export default function FeesPage() {
           </Table>
         </CardContent>
       </Card>
+
+      <Dialog open={Boolean(listDialog)} onClose={() => setListView(null)} maxWidth="md" fullWidth>
+        <DialogTitle>{listDialog?.title} — {feeMonth}</DialogTitle>
+        <DialogContent>
+          <Table sx={{ mt: 1 }}>
+            <TableHead>
+              <TableRow>
+                <TableCell>Student</TableCell>
+                <TableCell>Class</TableCell>
+                <TableCell>Monthly Fee</TableCell>
+                <TableCell>Paid</TableCell>
+                <TableCell>Discount</TableCell>
+                <TableCell>Due</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {listDialog?.students.map((status) => (
+                <TableRow
+                  key={status.student.id}
+                  hover
+                  onClick={() => { setListView(null); openStudent(status); }}
+                  sx={{ cursor: 'pointer' }}
+                >
+                  <TableCell>{status.student.studentName}</TableCell>
+                  <TableCell>{status.student.classGrade}</TableCell>
+                  <TableCell>{money(status.feeAmount)}</TableCell>
+                  <TableCell>{money(status.totalPaid)}</TableCell>
+                  <TableCell>{money(status.totalDiscount)}</TableCell>
+                  <TableCell>
+                    <Chip label={money(status.currentDue)} color={status.currentDue > 0 ? 'warning' : 'success'} size="small" />
+                  </TableCell>
+                </TableRow>
+              ))}
+              {listDialog && listDialog.students.length === 0 && (
+                <TableRow><TableCell colSpan={6}>No students in this list for {feeMonth}.</TableCell></TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={Boolean(selectedStatus)} onClose={() => setSelectedStatus(null)} maxWidth="sm" fullWidth>
         <DialogTitle>Update Fee - {selectedStatus?.student.studentName}</DialogTitle>

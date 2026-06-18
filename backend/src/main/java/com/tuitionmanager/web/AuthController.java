@@ -31,13 +31,25 @@ public class AuthController {
     if (!user.enabled || !passwordEncoder.matches(request.password(), user.passwordHash)) {
       throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
     }
-    return Map.of("token", jwtService.generate(user), "user", Map.of("email", user.email, "fullName", user.fullName, "role", user.role));
+    return Map.of("token", jwtService.generate(user), "user", Map.of(
+      "email", user.email,
+      "fullName", user.fullName,
+      "role", user.role,
+      "linkedStudentId", user.linkedStudentId == null ? "" : user.linkedStudentId,
+      "linkedParentId", user.linkedParentId == null ? "" : user.linkedParentId
+    ));
   }
 
   @GetMapping("/me")
   public Map<String, Object> me(Authentication authentication) {
     var user = users.findByEmail(authentication.getName()).orElseThrow();
-    return Map.of("email", user.email, "fullName", user.fullName, "role", user.role);
+    return Map.of(
+      "email", user.email,
+      "fullName", user.fullName,
+      "role", user.role,
+      "linkedStudentId", user.linkedStudentId == null ? "" : user.linkedStudentId,
+      "linkedParentId", user.linkedParentId == null ? "" : user.linkedParentId
+    );
   }
 
   public record LoginRequest(@Email String email, @NotBlank String password) {}

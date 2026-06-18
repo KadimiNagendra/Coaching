@@ -3,15 +3,24 @@ import { alpha, useTheme } from '@mui/material/styles';
 
 type Accent = 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'info';
 
-export function StatCard({ label, value, helper, accent = 'primary' }: { label: string; value: string | number; helper?: string; accent?: Accent }) {
+export function StatCard({ label, value, helper, accent = 'primary', onClick }: { label: string; value: string | number; helper?: string; accent?: Accent; onClick?: () => void }) {
   const theme = useTheme();
   const color = theme.palette[accent].main;
 
   return (
     <Card
+      onClick={onClick}
       sx={{
         position: 'relative',
         overflow: 'hidden',
+        cursor: onClick ? 'pointer' : 'default',
+        transition: 'box-shadow 0.2s, transform 0.2s',
+        ...(onClick && {
+          '&:hover': {
+            boxShadow: 4,
+            transform: 'translateY(-2px)'
+          }
+        }),
         '&::before': {
           content: '""',
           position: 'absolute',

@@ -1,15 +1,125 @@
 import { FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, Card, CardContent, Dialog, DialogContent, DialogTitle, Stack, Table, TableBody, TableCell, TableHead, TableRow, TextField } from '@mui/material';
+import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined';
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
+import { Box, Button, Card, CardContent, Dialog, DialogContent, DialogTitle, IconButton, Stack, Table, TableBody, TableCell, TableHead, TableRow, TextField } from '@mui/material';
 import { api, Homework } from '../api/client';
 import { PageHeader } from '../components/PageHeader';
+import { futureDateOrEmpty, isPastDate, today } from '../utils/dates';
+
+const emptyForm = (): Homework => ({ title: '', subject: '', description: '', dueDate: '' });
+const textFields: Array<[keyof Homework, string]> = [['title', 'Title'], ['subject', 'Subject'], ['description', 'Description']];
 
 export default function HomeworkPage() {
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<Homework>({ title: '', subject: '', description: '', dueDate: '' });
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [form, setForm] = useState<Homework>(emptyForm());
+  const [dateError, setDateError] = useState('');
   const queryClient = useQueryClient();
   const { data = [] } = useQuery({ queryKey: ['homework'], queryFn: api.homework });
-  const create = useMutation({ mutationFn: (payload: Homework) => api.createHomework(payload), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['homework'] }); setOpen(false); } });
-  function submit(event: FormEvent) { event.preventDefault(); create.mutate(form); }
-  return <><PageHeader title="Homework" subtitle="Assign work, due dates, and feedback." actionLabel="Assign Homework" onAction={() => setOpen(true)} /><Card><CardContent><Table><TableHead><TableRow><TableCell>Title</TableCell><TableCell>Subject</TableCell><TableCell>Description</TableCell><TableCell>Due Date</TableCell></TableRow></TableHead><TableBody>{data.map((item) => <TableRow key={item.id}><TableCell>{item.title}</TableCell><TableCell>{item.subject}</TableCell><TableCell>{item.description}</TableCell><TableCell>{item.dueDate}</TableCell></TableRow>)}</TableBody></Table></CardContent></Card><Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth><DialogTitle>Assign Homework</DialogTitle><DialogContent><Stack component="form" spacing={2} sx={{ mt: 1 }} onSubmit={submit}>{[['title', 'Title'], ['subject', 'Subject'], ['description', 'Description'], ['dueDate', 'Due Date']].map(([key, label]) => <TextField key={key} label={label} fullWidth value={String(form[key as keyof Homework] ?? '')} onChange={(e) => setForm({ ...form, [key]: e.target.value })} />)}<Button type="submit">Save</Button></Stack></DialogContent></Dialog></>;
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['homework'] });
+  const create = useMutation({ mutationFn: (payload: Homework) => api.createHomework(payload), onSuccess: () => { invalidate(); closeDialog(); } });
+  const update = useMutation({ mutationFn: ({ id, payload }: { id: number; payload: Homework }) => api.updateHomework(id, payload), onSuccess: () => { invalidate(); closeDialog(); } });
+  const remove = useMutation({ mutationFn: (id: number) => api.deleteHomework(id), onSuccess: invalidate });
+
+  function closeDialog() {
+    setOpen(false);
+    setEditingId(null);
+    setForm(emptyForm());
+    setDateError('');
+  }
+
+  function openCreate() {
+    setEditingId(null);
+    setForm(emptyForm());
+    setDateError('');
+    setOpen(true);
+  }
+
+  function openEdit(item: Homework) {
+    setEditingId(item.id ?? null);
+    setForm({ title: item.title, subject: item.subject, description: item.description ?? '', dueDate: futureDateOrEmpty(item.dueDate), assignedDate: item.assignedDate, remarks: item.remarks });
+    setDateError('');
+    setOpen(true);
+  }
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!form.dueDate) {
+      setDateError('Due date is required.');
+      return;
+    }
+    if (isPastDate(form.dueDate)) {
+      setDateError('Select today or a future date.');
+      return;
+    }
+    setDateError('');
+    if (editingId) update.mutate({ id: editingId, payload: form });
+    else create.mutate(form);
+  }
+
+  function handleDelete(item: Homework) {
+    if (!item.id || !window.confirm(`Delete homework "${item.title}"?`)) return;
+    remove.mutate(item.id);
+  }
+
+  return (
+    <>
+      <PageHeader title="Homework" subtitle="Assign work, due dates, and feedback." actionLabel="Assign Homework" onAction={openCreate} />
+      <Card>
+        <CardContent>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Title</TableCell>
+                <TableCell>Subject</TableCell>
+                <TableCell>Description</TableCell>
+                <TableCell>Due Date</TableCell>
+                <TableCell align="right">Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {data.map((item) => (
+                <TableRow key={item.id}>
+                  <TableCell>{item.title}</TableCell>
+                  <TableCell>{item.subject}</TableCell>
+                  <TableCell>{item.description}</TableCell>
+                  <TableCell>{item.dueDate}</TableCell>
+                  <TableCell align="right">
+                    <Box sx={{ display: 'inline-flex', gap: 0.5 }}>
+                      <IconButton size="small" aria-label="Edit homework" onClick={() => openEdit(item)}><EditOutlinedIcon fontSize="small" /></IconButton>
+                      <IconButton size="small" color="error" aria-label="Delete homework" onClick={() => handleDelete(item)}><DeleteOutlinedIcon fontSize="small" /></IconButton>
+                    </Box>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+      <Dialog open={open} onClose={closeDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>{editingId ? 'Edit Homework' : 'Assign Homework'}</DialogTitle>
+        <DialogContent>
+          <Stack component="form" spacing={2} sx={{ mt: 1 }} onSubmit={submit}>
+            {textFields.map(([key, label]) => (
+              <TextField key={key} label={label} fullWidth value={String(form[key] ?? '')} onChange={(e) => setForm({ ...form, [key]: e.target.value })} />
+            ))}
+            <TextField
+              label="Due Date"
+              type="date"
+              fullWidth
+              required
+              value={form.dueDate ?? ''}
+              onChange={(e) => { setForm({ ...form, dueDate: e.target.value }); setDateError(''); }}
+              slotProps={{ inputLabel: { shrink: true }, htmlInput: { min: today() } }}
+              error={Boolean(dateError)}
+              helperText={dateError || 'Only today or future dates can be selected.'}
+            />
+            <Button type="submit" disabled={create.isPending || update.isPending}>{editingId ? 'Update' : 'Save'}</Button>
+          </Stack>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
 }

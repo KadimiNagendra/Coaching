@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import SchoolIcon from '@mui/icons-material/School';
 import { Alert, Avatar, Box, Button, Card, CardContent, Container, Stack, TextField, Typography } from '@mui/material';
 import { alpha } from '@mui/material/styles';
-import { api, setToken } from '../api/client';
+import { api, homePath, setToken, setUser } from '../api/client';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('teacher@example.com');
@@ -17,7 +17,8 @@ export default function LoginPage() {
     try {
       const result = await api.login(email, password);
       setToken(result.token);
-      navigate('/');
+      setUser(result.user);
+      navigate(homePath(result.user.role));
     } catch {
       setError('Unable to sign in. Check the email and password.');
     }
@@ -71,8 +72,14 @@ export default function LoginPage() {
               <Button type="submit" size="large" fullWidth sx={{ py: 1.25, mt: 1 }}>
                 Sign in
               </Button>
-              <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center' }}>
-                Seed login: teacher@example.com / Admin@123
+              <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center', display: 'block' }}>
+                Teacher: teacher@example.com / Admin@123
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center', display: 'block' }}>
+                Parent: parent@example.com / Parent@123
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center', display: 'block' }}>
+                Student: student@example.com / Student@123
               </Typography>
             </Stack>
           </CardContent>

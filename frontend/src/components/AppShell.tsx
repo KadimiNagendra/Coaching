@@ -6,6 +6,7 @@ import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import PaymentsIcon from '@mui/icons-material/Payments';
 import FactCheckIcon from '@mui/icons-material/FactCheck';
 import AssessmentIcon from '@mui/icons-material/Assessment';
+import EmojiEventsOutlinedIcon from '@mui/icons-material/EmojiEventsOutlined';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
@@ -15,27 +16,35 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import SchoolIcon from '@mui/icons-material/School';
 import { AppBar, Avatar, Box, CssBaseline, Divider, Drawer, IconButton, List, ListItemButton, ListItemIcon, ListItemText, Toolbar, Typography, Button } from '@mui/material';
 import { alpha } from '@mui/material/styles';
-import { setToken } from '../api/client';
+import { setToken, getUser } from '../api/client';
 
 const drawerWidth = 280;
-const nav = [
-  { label: 'Dashboard', path: '/', icon: <DashboardIcon fontSize="small" /> },
+const teacherNav = [
+  { label: 'Dashboard', path: '/dashboard', icon: <DashboardIcon fontSize="small" /> },
   { label: 'Students', path: '/students', icon: <GroupIcon fontSize="small" /> },
   { label: 'Batches', path: '/batches', icon: <CalendarMonthIcon fontSize="small" /> },
   { label: 'Fees', path: '/fees', icon: <PaymentsIcon fontSize="small" /> },
   { label: 'Attendance', path: '/attendance', icon: <FactCheckIcon fontSize="small" /> },
   { label: 'Exams', path: '/exams', icon: <AssessmentIcon fontSize="small" /> },
+  { label: 'Results', path: '/results', icon: <EmojiEventsOutlinedIcon fontSize="small" /> },
   { label: 'Homework', path: '/homework', icon: <AssignmentIcon fontSize="small" /> },
   { label: 'Expenses', path: '/expenses', icon: <ReceiptLongIcon fontSize="small" /> },
   { label: 'Income', path: '/income', icon: <TrendingUpIcon fontSize="small" /> },
   { label: 'Reports', path: '/reports', icon: <AssessmentIcon fontSize="small" /> },
   { label: 'Notifications', path: '/notifications', icon: <NotificationsIcon fontSize="small" /> }
 ];
+const portalNav = [
+  { label: 'My Portal', path: '/portal', icon: <DashboardIcon fontSize="small" /> },
+  { label: 'Results', path: '/results', icon: <EmojiEventsOutlinedIcon fontSize="small" /> }
+];
 
 export function AppShell({ children }: PropsWithChildren) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+  const user = getUser();
+  const nav = user?.role === 'PARENT' || user?.role === 'STUDENT' ? portalNav : teacherNav;
+  const portalLabel = user?.role === 'PARENT' ? 'Parent portal' : user?.role === 'STUDENT' ? 'Student portal' : 'Teacher dashboard';
 
   const drawer = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -58,7 +67,7 @@ export function AppShell({ children }: PropsWithChildren) {
             Tuition Manager
           </Typography>
           <Typography variant="caption" sx={{ color: alpha('#ffffff', 0.55), letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-            Teacher dashboard
+            {portalLabel}
           </Typography>
         </Box>
       </Toolbar>

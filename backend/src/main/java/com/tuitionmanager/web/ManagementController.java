@@ -13,10 +13,12 @@ import java.util.Map;
 import java.util.UUID;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/v1")
@@ -36,8 +38,9 @@ public class ManagementController {
   private final DashboardService dashboardService;
   private final FileStorageService files;
   private final AuditService audit;
+  private final ReportService reports;
 
-  public ManagementController(StudentRepository students, ParentContactRepository parents, BatchRepository batches, FeePaymentRepository fees, AttendanceRecordRepository attendance, ExamRepository exams, ExamResultRepository examResults, HomeworkRepository homework, HomeworkSubmissionRepository homeworkSubmissions, ExpenseRepository expenses, IncomeEntryRepository income, NotificationLogRepository notifications, DashboardService dashboardService, FileStorageService files, AuditService audit) {
+  public ManagementController(StudentRepository students, ParentContactRepository parents, BatchRepository batches, FeePaymentRepository fees, AttendanceRecordRepository attendance, ExamRepository exams, ExamResultRepository examResults, HomeworkRepository homework, HomeworkSubmissionRepository homeworkSubmissions, ExpenseRepository expenses, IncomeEntryRepository income, NotificationLogRepository notifications, DashboardService dashboardService, FileStorageService files, AuditService audit, ReportService reports) {
     this.students = students;
     this.parents = parents;
     this.batches = batches;
@@ -53,6 +56,7 @@ public class ManagementController {
     this.dashboardService = dashboardService;
     this.files = files;
     this.audit = audit;
+    this.reports = reports;
   }
 
   @GetMapping("/students") public List<Student> students(@RequestParam(required = false) String q, @RequestParam(required = false) StudentStatus status) {
@@ -71,7 +75,7 @@ public class ManagementController {
   @GetMapping("/batches") public List<Batch> batches() { return batches.findAll(); }
   @PostMapping("/batches") public Batch createBatch(@RequestBody Batch batch) { Batch saved = batches.save(batch); audit.record("CREATE", "Batch", saved.id, saved.batchName); return saved; }
   @PutMapping("/batches/{id}") public Batch updateBatch(@PathVariable Long id, @RequestBody Batch input) { input.id = id; return batches.save(input); }
-  @DeleteMapping("/batches/{id}") public void deleteBatch(@PathVariable Long id) { batches.deleteById(id); }
+  @DeleteMapping("/batches/{id}") public void deleteBatch(@PathVariable Long id) { students.findAll().stream().filter(s -> s.batch != null && id.equals(s.batch.id)).forEach(s -> { s.batch = null; students.save(s); }); homework.findAll().stream().filter(h -> h.batch != null && id.equals(h.batch.id)).forEach(h -> { h.batch = null; homework.save(h); }); batches.deleteById(id); }
   @PostMapping("/batches/{batchId}/students/{studentId}") public Student assignStudent(@PathVariable Long batchId, @PathVariable Long studentId) { Student s = students.findById(studentId).orElseThrow(); s.batch = batches.findById(batchId).orElseThrow(); return students.save(s); }
 
   @GetMapping("/fees") public List<FeePayment> feePayments(@RequestParam(required = false) String month) { return month == null ? fees.findAll() : fees.findByFeeMonth(month); }
@@ -103,11 +107,42 @@ public class ManagementController {
 
   @GetMapping("/exams") public List<Exam> exams() { return exams.findAll(); }
   @PostMapping("/exams") public Exam createExam(@RequestBody Exam exam) { return exams.save(exam); }
-  @GetMapping("/exams/{id}/results") public List<ExamResult> results(@PathVariable Long id) { return examResults.findAll().stream().filter(r -> r.exam != null && id.equals(r.exam.id)).toList(); }
-  @PostMapping("/exams/{id}/results") public ExamResult addResult(@PathVariable Long id, @RequestBody ExamResult result) { result.exam = exams.findById(id).orElseThrow(); return examResults.save(result); }
+  @PutMapping("/exams/{id}") public Exam updateExam(@PathVariable Long id, @RequestBody Exam exam) { exam.id = id; return exams.save(exam); }
+  @DeleteMapping("/exams/{id}") public void deleteExam(@PathVariable Long id) { examResults.findByExamId(id).forEach(examResults::delete); exams.deleteById(id); }
+  @GetMapping("/exams/{id}/results") public List<ExamResult> results(@PathVariable Long id) { return examResults.findByExamId(id); }
+  @PostMapping("/exams/{id}/results") public ExamResult addResult(@PathVariable Long id, @RequestBody ExamResult result) {
+    Exam exam = exams.findById(id).orElseThrow();
+    if (result.student == null || result.student.id == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Student is required");
+    Student student = students.findById(result.student.id).orElseThrow();
+    if (examResults.findByExamIdAndStudentId(id, student.id).isPresent()) throw new ResponseStatusException(HttpStatus.CONFLICT, "Result already exists for this student");
+    result.exam = exam;
+    result.student = student;
+    if (result.totalMarks == null) result.totalMarks = exam.totalMarks != null ? exam.totalMarks : 100;
+    ExamResult saved = examResults.save(result);
+    audit.record("CREATE", "ExamResult", saved.id, student.studentName + " - " + exam.examName);
+    return saved;
+  }
+  @PutMapping("/exams/{examId}/results/{resultId}") public ExamResult updateResult(@PathVariable Long examId, @PathVariable Long resultId, @RequestBody ExamResult input) {
+    ExamResult existing = examResults.findById(resultId).orElseThrow();
+    if (existing.exam == null || !examId.equals(existing.exam.id)) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Result not found for this exam");
+    if (input.obtainedMarks != null) existing.obtainedMarks = input.obtainedMarks;
+    if (input.totalMarks != null) existing.totalMarks = input.totalMarks;
+    if (input.remarks != null) existing.remarks = input.remarks;
+    ExamResult saved = examResults.save(existing);
+    audit.record("UPDATE", "ExamResult", saved.id, existing.student.studentName + " - " + existing.exam.examName);
+    return saved;
+  }
+  @DeleteMapping("/exams/{examId}/results/{resultId}") public void deleteResult(@PathVariable Long examId, @PathVariable Long resultId) {
+    ExamResult existing = examResults.findById(resultId).orElseThrow();
+    if (existing.exam == null || !examId.equals(existing.exam.id)) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Result not found for this exam");
+    audit.record("DELETE", "ExamResult", resultId, existing.student.studentName + " - " + existing.exam.examName);
+    examResults.delete(existing);
+  }
 
   @GetMapping("/homework") public List<Homework> homework() { return homework.findAll(); }
   @PostMapping("/homework") public Homework createHomework(@RequestBody Homework item) { return homework.save(item); }
+  @PutMapping("/homework/{id}") public Homework updateHomework(@PathVariable Long id, @RequestBody Homework item) { item.id = id; return homework.save(item); }
+  @DeleteMapping("/homework/{id}") public void deleteHomework(@PathVariable Long id) { homeworkSubmissions.findAll().stream().filter(s -> s.homework != null && id.equals(s.homework.id)).forEach(homeworkSubmissions::delete); homework.deleteById(id); }
   @GetMapping("/homework/{id}/submissions") public List<HomeworkSubmission> submissions(@PathVariable Long id) { return homeworkSubmissions.findAll().stream().filter(s -> s.homework != null && id.equals(s.homework.id)).toList(); }
   @PostMapping("/homework/{id}/submissions") public HomeworkSubmission addSubmission(@PathVariable Long id, @RequestBody HomeworkSubmission submission) { submission.homework = homework.findById(id).orElseThrow(); return homeworkSubmissions.save(submission); }
 
@@ -119,6 +154,8 @@ public class ManagementController {
 
   @GetMapping("/income") public List<IncomeEntry> income() { return income.findAll(); }
   @PostMapping("/income") public IncomeEntry createIncome(@RequestBody IncomeEntry entry) { if (entry.incomeId == null || entry.incomeId.isBlank()) entry.incomeId = "INC-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(); return income.save(entry); }
+  @PutMapping("/income/{id}") public IncomeEntry updateIncome(@PathVariable Long id, @RequestBody IncomeEntry entry) { entry.id = id; return income.save(entry); }
+  @DeleteMapping("/income/{id}") public void deleteIncome(@PathVariable Long id) { income.deleteById(id); }
 
   @GetMapping("/notifications") public List<NotificationLog> notifications() { return notifications.findAll(); }
   @PostMapping("/notifications") public NotificationLog createNotification(@RequestBody NotificationLog notification) { return notifications.save(notification); }
@@ -126,14 +163,18 @@ public class ManagementController {
   @GetMapping("/dashboard/summary") public Map<String, Object> dashboard(@RequestParam(required = false) String month) { return dashboardService.summary(month == null ? YearMonth.now() : YearMonth.parse(month)); }
 
   @GetMapping(value = "/reports/{type}.csv", produces = "text/csv")
-  public ResponseEntity<String> report(@PathVariable String type) {
-    String csv = switch (type) {
-      case "students" -> "Student ID,Name,Class,Subjects,Status\n" + students.findAll().stream().map(s -> String.join(",", s.studentId, s.studentName, s.classGrade, safe(s.subjectsEnrolled), String.valueOf(s.status))).reduce("", (a, b) -> a + b + "\n");
-      case "expenses" -> "Date,Category,Amount,Vendor\n" + expenses.findAll().stream().map(e -> e.expenseDate + "," + e.expenseCategory + "," + e.amount + "," + safe(e.vendorName)).reduce("", (a, b) -> a + b + "\n");
-      case "fees" -> "Payment ID,Student,Month,Paid,Due\n" + fees.findAll().stream().map(f -> f.paymentId + "," + f.student.studentName + "," + f.feeMonth + "," + f.paidAmount + "," + f.dueAmount).reduce("", (a, b) -> a + b + "\n");
-      default -> "Report,Status\n" + type + ",Not implemented\n";
-    };
+  public ResponseEntity<String> reportCsv(@PathVariable String type) {
+    String csv = reports.csv(type);
     return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + type + ".csv").contentType(MediaType.parseMediaType("text/csv")).body(csv);
+  }
+
+  @GetMapping(value = "/reports/{type}.xlsx", produces = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+  public ResponseEntity<byte[]> reportExcel(@PathVariable String type) throws IOException {
+    byte[] data = reports.excel(type);
+    return ResponseEntity.ok()
+      .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + type + "-report.xlsx")
+      .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+      .body(data);
   }
 
   private void createAbsenceNotification(AttendanceRecord record) {
@@ -156,6 +197,4 @@ public class ManagementController {
     });
     return latest;
   }
-
-  private String safe(String value) { return value == null ? "" : value.replace(",", " "); }
 }

@@ -23,7 +23,10 @@ public class SeedData {
         teacher.role = Role.TEACHER;
         users.save(teacher);
       }
-      if (students.count() > 0) return;
+      if (students.count() > 0) {
+        ensurePortalUsers(users, students, encoder);
+        return;
+      }
 
       Batch math6 = new Batch(); math6.batchName = "Class 6 Mathematics"; math6.subject = "Mathematics"; math6.classGrade = "Class 6"; math6.startTime = LocalTime.of(17, 0); math6.endTime = LocalTime.of(18, 0); math6.daysOfWeek = "MON,WED,FRI"; math6.maximumStudents = 30; batches.save(math6);
       Batch sci8 = new Batch(); sci8.batchName = "Class 8 Science"; sci8.subject = "Science"; sci8.classGrade = "Class 8"; sci8.startTime = LocalTime.of(18, 0); sci8.endTime = LocalTime.of(19, 0); sci8.daysOfWeek = "TUE,THU,SAT"; batches.save(sci8);
@@ -51,7 +54,32 @@ public class SeedData {
       IncomeEntry admission = new IncomeEntry(); admission.incomeId = "INC-1001"; admission.source = "Admission Fees"; admission.amount = BigDecimal.valueOf(2000); admission.description = "New student admission"; income.save(admission);
 
       NotificationLog notification = new NotificationLog(); notification.type = NotificationType.FEE_DUE_REMINDER; notification.channel = NotificationChannel.WHATSAPP; notification.student = s2; notification.recipient = s2.parent.mobileNumber; notification.subject = "Fee reminder"; notification.message = "June fee balance is pending."; notifications.save(notification);
+
+      ensurePortalUsers(users, students, encoder);
     };
+  }
+
+  private void ensurePortalUsers(UserAccountRepository users, StudentRepository students, PasswordEncoder encoder) {
+    students.findAll().stream().filter(student -> "STU-1001".equals(student.studentId)).findFirst().ifPresent(s1 -> {
+      if (users.findByEmail("parent@example.com").isEmpty() && s1.parent != null) {
+        UserAccount parentUser = new UserAccount();
+        parentUser.email = "parent@example.com";
+        parentUser.fullName = s1.parent.name;
+        parentUser.passwordHash = encoder.encode("Parent@123");
+        parentUser.role = Role.PARENT;
+        parentUser.linkedParentId = s1.parent.id;
+        users.save(parentUser);
+      }
+      if (users.findByEmail("student@example.com").isEmpty()) {
+        UserAccount studentUser = new UserAccount();
+        studentUser.email = "student@example.com";
+        studentUser.fullName = s1.studentName;
+        studentUser.passwordHash = encoder.encode("Student@123");
+        studentUser.role = Role.STUDENT;
+        studentUser.linkedStudentId = s1.id;
+        users.save(studentUser);
+      }
+    });
   }
 
   private ParentContact parent(String name, String mobile, String email, String address) { ParentContact p = new ParentContact(); p.name = name; p.mobileNumber = mobile; p.email = email; p.address = address; return p; }

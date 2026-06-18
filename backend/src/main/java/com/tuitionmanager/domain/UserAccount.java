@@ -23,6 +23,9 @@ public class UserAccount {
   @Enumerated(EnumType.STRING) @Column(nullable = false)
   public Role role = Role.TEACHER;
 
+  public Long linkedStudentId;
+  public Long linkedParentId;
+
   public boolean enabled = true;
   public Instant createdAt = Instant.now();
 }

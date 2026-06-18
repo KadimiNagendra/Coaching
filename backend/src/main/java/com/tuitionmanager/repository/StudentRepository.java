@@ -7,5 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface StudentRepository extends JpaRepository<Student, Long> {
   List<Student> findByStatus(StudentStatus status);
+  List<Student> findByParentId(Long parentId);
   List<Student> findByClassGradeContainingIgnoreCaseOrSubjectsEnrolledContainingIgnoreCaseOrStudentNameContainingIgnoreCase(String classGrade, String subject, String studentName);
 }

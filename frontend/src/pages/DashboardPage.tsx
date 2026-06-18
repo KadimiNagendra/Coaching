@@ -1,24 +1,36 @@
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Box, Card, CardContent, Typography } from '@mui/material';
-import { alpha } from '@mui/material/styles';
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { api } from '../api/client';
+import { FinancialPieChart } from '../components/FinancialPieChart';
 import { PageHeader } from '../components/PageHeader';
 import { StatCard } from '../components/StatCard';
+import { UpcomingExamsCard } from '../components/UpcomingExamsCard';
 import { chartColors } from '../theme/theme';
 
 const formatCurrency = (value?: number) => `Rs ${Number(value ?? 0).toLocaleString('en-IN')}`;
-const trend = [
-  { month: 'Jan', income: 42000, expenses: 9000, profit: 33000 },
-  { month: 'Feb', income: 46000, expenses: 9500, profit: 36500 },
-  { month: 'Mar', income: 50000, expenses: 10000, profit: 40000 },
-  { month: 'Apr', income: 52000, expenses: 12000, profit: 40000 },
-  { month: 'May', income: 56000, expenses: 11500, profit: 44500 },
-  { month: 'Jun', income: 60000, expenses: 12500, profit: 47500 }
-];
+const currentMonthLabel = () => new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
 
 export default function DashboardPage() {
   const { data } = useQuery({ queryKey: ['dashboard'], queryFn: api.dashboard });
+
+  const financialPie = useMemo(() => {
+    const income = Number(data?.monthlyIncome ?? 0);
+    const expenses = Number(data?.monthlyExpenses ?? 0);
+    const profit = Number(data?.netProfit ?? 0);
+    return [
+      { name: 'Income', value: income, color: chartColors.income },
+      { name: 'Expenses', value: expenses, color: chartColors.expenses },
+      { name: 'Profit', value: Math.max(profit, 0), color: chartColors.profit }
+    ].filter((item) => item.value > 0);
+  }, [data]);
+
+  const financialSummary = useMemo(() => ({
+    income: Number(data?.monthlyIncome ?? 0),
+    expenses: Number(data?.monthlyExpenses ?? 0),
+    profit: Number(data?.netProfit ?? 0)
+  }), [data]);
+
   return (
     <Box>
       <PageHeader title="Dashboard" subtitle="A mobile-friendly daily command center for your tuition classes." />
@@ -34,38 +46,26 @@ export default function DashboardPage() {
         <Card sx={{ height: '100%' }}>
           <CardContent>
             <Typography variant="h6" gutterBottom>Income, Expenses and Profit</Typography>
-            <ResponsiveContainer width="100%" height={280}>
-              <AreaChart data={trend}>
-                <CartesianGrid strokeDasharray="3 3" stroke={alpha('#0f172a', 0.08)} />
-                <XAxis dataKey="month" tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
-                <Tooltip />
-                <Area type="monotone" dataKey="income" stroke={chartColors.income} fill={chartColors.incomeFill} strokeWidth={2} />
-                <Area type="monotone" dataKey="expenses" stroke={chartColors.expenses} fill={chartColors.expensesFill} strokeWidth={2} />
-                <Area type="monotone" dataKey="profit" stroke={chartColors.profit} fill={chartColors.profitFill} strokeWidth={2} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-        <Card sx={{ height: '100%' }}>
-          <CardContent>
-            <Typography variant="h6" gutterBottom>Upcoming Exams</Typography>
-            {(data?.upcomingExams ?? []).map((exam, index) => (
-              <Typography
-                key={index}
-                sx={{
-                  py: 1.5,
-                  borderBottom: '1px solid',
-                  borderColor: alpha('#0f172a', 0.06),
-                  '&:last-child': { borderBottom: 0 }
-                }}
-              >
-                {String(exam.examName)} · {String(exam.subject)} · {String(exam.examDate)}
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              {currentMonthLabel()} · Net profit {formatCurrency(data?.netProfit)}
+            </Typography>
+            {financialPie.length === 0 ? (
+              <Typography color="text.secondary" sx={{ py: 10, textAlign: 'center' }}>
+                No income or expense data for this month yet.
               </Typography>
-            ))}
-            {(data?.upcomingExams ?? []).length === 0 && <Typography color="text.secondary">No upcoming exams.</Typography>}
+            ) : (
+              <Box sx={{ py: 1 }}>
+                <FinancialPieChart data={financialPie} />
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, justifyContent: 'center', mt: 2 }}>
+                  <Typography variant="body2" color="text.secondary">Income: {formatCurrency(financialSummary.income)}</Typography>
+                  <Typography variant="body2" color="text.secondary">Expenses: {formatCurrency(financialSummary.expenses)}</Typography>
+                  <Typography variant="body2" color="text.secondary">Profit: {formatCurrency(financialSummary.profit)}</Typography>
+                </Box>
+              </Box>
+            )}
           </CardContent>
         </Card>
+        <UpcomingExamsCard exams={data?.upcomingExams} />
       </Box>
     </Box>
   );

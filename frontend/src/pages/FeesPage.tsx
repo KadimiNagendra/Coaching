@@ -28,6 +28,8 @@ type FeeListView = 'collected' | 'outstanding' | 'fullyPaid';
 const today = () => new Date().toISOString().slice(0, 10);
 const currentMonth = () => new Date().toISOString().slice(0, 7);
 const money = (value?: number) => `Rs ${Number(value ?? 0).toLocaleString('en-IN')}`;
+const parseAmountInput = (value: string) => (value === '' ? 0 : Number(value));
+const amountInputValue = (value: number) => (value === 0 ? '' : value);
 
 const defaultForm = (paidAmount = 0): PaymentForm => ({
   paidAmount,
@@ -278,8 +280,8 @@ export default function FeesPage() {
             <Typography color="text.secondary">
               Month: {selectedStatus?.feeMonth} | Fee: {money(selectedStatus?.feeAmount)} | Current Due: {money(selectedStatus?.currentDue)}
             </Typography>
-            <TextField label="Paid Amount" type="number" value={form.paidAmount} onChange={(event) => setForm({ ...form, paidAmount: Number(event.target.value) })} required autoFocus />
-            <TextField label="Discount" type="number" value={form.discountAmount} onChange={(event) => setForm({ ...form, discountAmount: Number(event.target.value) })} />
+            <TextField label="Paid Amount" type="number" value={amountInputValue(form.paidAmount)} onChange={(event) => setForm({ ...form, paidAmount: parseAmountInput(event.target.value) })} required autoFocus slotProps={{ htmlInput: { min: 0 } }} />
+            <TextField label="Discount" type="number" value={amountInputValue(form.discountAmount)} onChange={(event) => setForm({ ...form, discountAmount: parseAmountInput(event.target.value) })} slotProps={{ htmlInput: { min: 0 } }} />
             <TextField label="Payment Date" type="date" value={form.paymentDate} onChange={(event) => setForm({ ...form, paymentDate: event.target.value })} slotProps={{ inputLabel: { shrink: true } }} />
             <TextField select label="Payment Mode" value={form.paymentMode} onChange={(event) => setForm({ ...form, paymentMode: event.target.value })}>
               {['CASH', 'UPI', 'CARD', 'BANK_TRANSFER', 'CHEQUE', 'OTHER'].map((mode) => <MenuItem key={mode} value={mode}>{mode}</MenuItem>)}

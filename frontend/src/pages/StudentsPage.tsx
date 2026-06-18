@@ -118,7 +118,7 @@ export default function StudentsPage() {
               <TextField label="Subjects" fullWidth value={form.subjectsEnrolled ?? ''} onChange={(e) => setForm({ ...form, subjectsEnrolled: e.target.value })} />
               <TextField label="Parent Name" fullWidth value={form.parent?.name ?? ''} onChange={(e) => setForm({ ...form, parent: { ...(form.parent ?? { mobileNumber: '' }), name: e.target.value } })} />
               <TextField label="Parent Mobile" fullWidth value={form.parent?.mobileNumber ?? ''} onChange={(e) => setForm({ ...form, parent: { ...(form.parent ?? { name: '' }), mobileNumber: e.target.value } })} />
-              <TextField label="Monthly Fee" type="number" fullWidth value={form.monthlyFee ?? 0} onChange={(e) => setForm({ ...form, monthlyFee: Number(e.target.value) })} />
+              <TextField label="Monthly Fee" type="number" fullWidth value={(form.monthlyFee ?? 0) === 0 ? '' : form.monthlyFee} onChange={(e) => setForm({ ...form, monthlyFee: e.target.value === '' ? 0 : Number(e.target.value) })} slotProps={{ htmlInput: { min: 0 } }} />
               <TextField select label="Status" fullWidth value={form.status ?? 'ACTIVE'} onChange={(e) => setForm({ ...form, status: e.target.value as Student['status'] })}>
                 <MenuItem value="ACTIVE">ACTIVE</MenuItem>
                 <MenuItem value="INACTIVE">INACTIVE</MenuItem>

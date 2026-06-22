@@ -42,7 +42,7 @@ export function AppShell({ children }: PropsWithChildren) {
   const navigate = useNavigate();
   const user = getUser();
   const nav = user?.role === 'PARENT' || user?.role === 'STUDENT' ? portalNav : teacherNav;
-  const portalLabel = user?.role === 'PARENT' ? 'Parent portal' : user?.role === 'STUDENT' ? 'Student portal' : 'Teacher dashboard';
+  const portalLabel = user?.role === 'PARENT' ? 'Parent portal' : user?.role === 'STUDENT' ? 'Student portal' : 'Teacher Portal';
 
   const drawer = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>

@@ -1,6 +1,6 @@
 import AssessmentOutlinedIcon from '@mui/icons-material/AssessmentOutlined';
 import EventOutlinedIcon from '@mui/icons-material/EventOutlined';
-import { Box, Card, CardContent, Chip, Typography } from '@mui/material';
+import { Box, Card, CardContent, Chip, Typography, Divider } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 
 type ExamItem = Record<string, unknown>;
@@ -71,7 +71,17 @@ export function UpcomingExamsCard({ exams = [] }: { exams?: ExamItem[] }) {
             </Typography>
           </Box>
         ) : (
-          <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: {
+                xs: '1fr',
+                sm: '1fr 1fr',
+                md: 'repeat(auto-fill, minmax(300px, 1fr))'
+              },
+              gap: 2
+            }}
+          >
             {exams.map((exam, index) => {
               const examName = String(exam.examName ?? 'Untitled exam');
               const subject = String(exam.subject ?? 'General');
@@ -84,8 +94,8 @@ export function UpcomingExamsCard({ exams = [] }: { exams?: ExamItem[] }) {
                   key={`${examName}-${index}`}
                   sx={{
                     display: 'flex',
-                    gap: 1.5,
-                    alignItems: 'flex-start',
+                    flexDirection: 'column',
+                    gap: 1.25,
                     p: 1.75,
                     borderRadius: 2,
                     border: '1px solid',
@@ -98,32 +108,37 @@ export function UpcomingExamsCard({ exams = [] }: { exams?: ExamItem[] }) {
                     }
                   }}
                 >
-                  <Box
-                    sx={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: 1.5,
-                      display: 'grid',
-                      placeItems: 'center',
-                      flexShrink: 0,
-                      bgcolor: alpha('#4f46e5', 0.1),
-                      color: 'primary.main'
-                    }}
-                  >
-                    <AssessmentOutlinedIcon fontSize="small" />
-                  </Box>
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography sx={{ fontWeight: 700, lineHeight: 1.3, mb: 0.75 }}>
-                      {examName}
-                    </Typography>
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
-                      <Chip label={subject} size="small" color="primary" variant="outlined" />
-                      {classGrade && <Chip label={classGrade} size="small" variant="outlined" />}
+                  <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
+                    <Box
+                      sx={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 1.5,
+                        display: 'grid',
+                        placeItems: 'center',
+                        flexShrink: 0,
+                        bgcolor: alpha('#4f46e5', 0.1),
+                        color: 'primary.main'
+                      }}
+                    >
+                      <AssessmentOutlinedIcon fontSize="small" />
+                    </Box>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography sx={{ fontWeight: 700, lineHeight: 1.3, mb: 0.75 }}>
+                        {examName}
+                      </Typography>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        <Chip label={subject} size="small" color="primary" variant="outlined" sx={{ height: 20, fontSize: '0.75rem' }} />
+                        {classGrade && <Chip label={classGrade} size="small" variant="outlined" sx={{ height: 20, fontSize: '0.75rem' }} />}
+                      </Box>
                     </Box>
                   </Box>
-                  <Box sx={{ textAlign: 'right', flexShrink: 0 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5, color: 'text.secondary', mb: 0.5 }}>
-                      <EventOutlinedIcon sx={{ fontSize: 16 }} />
+
+                  <Divider sx={{ borderColor: alpha('#0f172a', 0.04) }} />
+
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'text.secondary' }}>
+                      <EventOutlinedIcon sx={{ fontSize: 15 }} />
                       <Typography variant="caption" sx={{ fontWeight: 600 }}>
                         {formatExamDate(examDate)}
                       </Typography>
@@ -133,7 +148,7 @@ export function UpcomingExamsCard({ exams = [] }: { exams?: ExamItem[] }) {
                         label={relative}
                         size="small"
                         color={relative === 'Today' ? 'warning' : 'success'}
-                        sx={{ fontWeight: 600, height: 22 }}
+                        sx={{ fontWeight: 600, height: 20, fontSize: '0.7rem' }}
                       />
                     )}
                   </Box>

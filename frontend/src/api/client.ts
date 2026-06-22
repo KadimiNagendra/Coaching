@@ -46,6 +46,15 @@ export type ExamResult = {
   remarks?: string;
 };
 export type Homework = { id?: number; title: string; subject: string; description?: string; assignedDate?: string; dueDate?: string; remarks?: string; classGrade?: string; batch?: Batch };
+export type ClassSession = {
+  id?: number;
+  sessionDate: string;
+  batch?: Batch;
+  subject: string;
+  classGrade: string;
+  topicsCovered?: string;
+  remarks?: string;
+};
 export type NotificationLog = { id?: number; type: string; channel: string; recipient?: string; subject?: string; message: string; status?: string; createdAt?: string; student?: Student };
 
 export function getToken() {
@@ -124,6 +133,9 @@ export const api = {
   createHomework: (homework: Homework) => request<Homework>('/api/v1/homework', { method: 'POST', body: JSON.stringify(homework) }),
   updateHomework: (id: number, homework: Homework) => request<Homework>(`/api/v1/homework/${id}`, { method: 'PUT', body: JSON.stringify(homework) }),
   deleteHomework: (id: number) => request<void>(`/api/v1/homework/${id}`, { method: 'DELETE' }),
+  classSessions: () => request<ClassSession[]>('/api/v1/class-sessions'),
+  createClassSession: (session: ClassSession) => request<ClassSession>('/api/v1/class-sessions', { method: 'POST', body: JSON.stringify(session) }),
+  deleteClassSession: (id: number) => request<void>(`/api/v1/class-sessions/${id}`, { method: 'DELETE' }),
   expenses: () => request<Expense[]>('/api/v1/expenses'),
   createExpense: (expense: Expense) => request<Expense>('/api/v1/expenses', { method: 'POST', body: JSON.stringify(expense) }),
   updateExpense: (id: number, expense: Expense) => request<Expense>(`/api/v1/expenses/${id}`, { method: 'PUT', body: JSON.stringify(expense) }),

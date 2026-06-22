@@ -39,8 +39,9 @@ public class ManagementController {
   private final FileStorageService files;
   private final AuditService audit;
   private final ReportService reports;
+  private final ClassSessionRepository classSessions;
 
-  public ManagementController(StudentRepository students, ParentContactRepository parents, BatchRepository batches, FeePaymentRepository fees, AttendanceRecordRepository attendance, ExamRepository exams, ExamResultRepository examResults, HomeworkRepository homework, HomeworkSubmissionRepository homeworkSubmissions, ExpenseRepository expenses, IncomeEntryRepository income, NotificationLogRepository notifications, DashboardService dashboardService, FileStorageService files, AuditService audit, ReportService reports) {
+  public ManagementController(StudentRepository students, ParentContactRepository parents, BatchRepository batches, FeePaymentRepository fees, AttendanceRecordRepository attendance, ExamRepository exams, ExamResultRepository examResults, HomeworkRepository homework, HomeworkSubmissionRepository homeworkSubmissions, ExpenseRepository expenses, IncomeEntryRepository income, NotificationLogRepository notifications, DashboardService dashboardService, FileStorageService files, AuditService audit, ReportService reports, ClassSessionRepository classSessions) {
     this.students = students;
     this.parents = parents;
     this.batches = batches;
@@ -57,6 +58,7 @@ public class ManagementController {
     this.files = files;
     this.audit = audit;
     this.reports = reports;
+    this.classSessions = classSessions;
   }
 
   @GetMapping("/students") public List<Student> students(@RequestParam(required = false) String q, @RequestParam(required = false) StudentStatus status) {
@@ -158,6 +160,15 @@ public class ManagementController {
   @DeleteMapping("/homework/{id}") public void deleteHomework(@PathVariable Long id) { homeworkSubmissions.findAll().stream().filter(s -> s.homework != null && id.equals(s.homework.id)).forEach(homeworkSubmissions::delete); homework.deleteById(id); }
   @GetMapping("/homework/{id}/submissions") public List<HomeworkSubmission> submissions(@PathVariable Long id) { return homeworkSubmissions.findAll().stream().filter(s -> s.homework != null && id.equals(s.homework.id)).toList(); }
   @PostMapping("/homework/{id}/submissions") public HomeworkSubmission addSubmission(@PathVariable Long id, @RequestBody HomeworkSubmission submission) { submission.homework = homework.findById(id).orElseThrow(); return homeworkSubmissions.save(submission); }
+
+  @GetMapping("/class-sessions") public List<ClassSession> classSessions() { return classSessions.findAll(); }
+  @PostMapping("/class-sessions") public ClassSession createClassSession(@RequestBody ClassSession item) {
+    if (item.batch != null && item.batch.id != null) {
+      item.batch = batches.findById(item.batch.id).orElseThrow();
+    }
+    return classSessions.save(item);
+  }
+  @DeleteMapping("/class-sessions/{id}") public void deleteClassSession(@PathVariable Long id) { classSessions.deleteById(id); }
 
   @GetMapping("/expenses") public List<Expense> expenses() { return expenses.findAll(); }
   @PostMapping("/expenses") public Expense createExpense(@RequestBody Expense expense) { if (expense.expenseId == null || expense.expenseId.isBlank()) expense.expenseId = "EXP-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(); return expenses.save(expense); }

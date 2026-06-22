@@ -7,6 +7,8 @@ import { alpha } from '@mui/material/styles';
 import { api, FeePayment, Expense, IncomeEntry } from '../api/client';
 import { PageHeader } from '../components/PageHeader';
 import { StatCard } from '../components/StatCard';
+import { FinancialPieChart } from '../components/FinancialPieChart';
+import { chartColors } from '../theme/theme';
 
 // Shared Helpers
 const today = () => new Date().toISOString().slice(0, 10);
@@ -14,6 +16,7 @@ const currentMonth = () => new Date().toISOString().slice(0, 7);
 const money = (value?: number) => `Rs ${Number(value ?? 0).toLocaleString('en-IN')}`;
 const parseAmountInput = (value: string) => (value === '' ? 0 : Number(value));
 const amountInputValue = (value: number) => (value === 0 ? '' : value);
+const currentMonthLabel = () => new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
 
 type PaymentForm = {
   paidAmount: number;
@@ -59,8 +62,30 @@ const emptyIncomeForm = (): IncomeEntry => ({
 });
 
 export default function FinancePage() {
-  const [activeTab, setActiveTab] = useState<'fees' | 'expenses' | 'income'>('fees');
+  const [activeTab, setActiveTab] = useState<'overview' | 'fees' | 'expenses' | 'income'>('overview');
   const queryClient = useQueryClient();
+
+  // ==========================================
+  // GENERAL OVERVIEW DATA
+  // ==========================================
+  const { data: dashboard } = useQuery({ queryKey: ['dashboard'], queryFn: api.dashboard });
+
+  const financialPie = useMemo(() => {
+    const income = Number(dashboard?.monthlyIncome ?? 0);
+    const expenses = Number(dashboard?.monthlyExpenses ?? 0);
+    const profit = Number(dashboard?.netProfit ?? 0);
+    return [
+      { name: 'Income', value: income, color: chartColors.income },
+      { name: 'Expenses', value: expenses, color: chartColors.expenses },
+      { name: 'Profit', value: Math.max(profit, 0), color: chartColors.profit }
+    ].filter((item) => item.value > 0);
+  }, [dashboard]);
+
+  const financialSummary = useMemo(() => ({
+    income: Number(dashboard?.monthlyIncome ?? 0),
+    expenses: Number(dashboard?.monthlyExpenses ?? 0),
+    profit: Number(dashboard?.netProfit ?? 0)
+  }), [dashboard]);
 
   // ==========================================
   // FEES TAB STATE & LOGIC
@@ -269,6 +294,7 @@ export default function FinancePage() {
   const actionLabel = activeTab === 'expenses' ? 'Add Expense' : activeTab === 'income' ? 'Add Income' : undefined;
   const onAction = activeTab === 'expenses' ? openCreateExpense : activeTab === 'income' ? openCreateIncome : undefined;
   const tabSubtitles = {
+    overview: "High-level summary of your center's monthly income, expenses, and profits.",
     fees: "Choose a month, click a student, and update that student's fee payment.",
     expenses: "Track rent, utilities, materials, transport, marketing, and miscellaneous costs.",
     income: "Track tuition fees, admission fees, crash courses, and other income."
@@ -289,12 +315,45 @@ export default function FinancePage() {
           onChange={(_, value: typeof activeTab) => setActiveTab(value)}
           sx={{ px: 2, borderBottom: 1, borderColor: alpha('#0f172a', 0.08) }}
         >
+          <Tab label="Overview" value="overview" />
           <Tab label="Fees" value="fees" />
           <Tab label="Expenses" value="expenses" />
           <Tab label="Income" value="income" />
         </Tabs>
 
         <CardContent sx={{ pt: 3 }}>
+          {activeTab === 'overview' && (
+            <Box>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' }, gap: 2, mb: 3 }}>
+                <StatCard label="Monthly Income" value={money(dashboard?.monthlyIncome)} helper="Fees plus other income" accent="success" />
+                <StatCard label="Net Profit" value={money(dashboard?.netProfit)} helper={`${money(dashboard?.monthlyExpenses)} expenses`} accent="secondary" />
+                <StatCard label="Pending Fees" value={money(dashboard?.pendingFees)} helper="Needs follow-up" accent="warning" />
+              </Box>
+              <Card sx={{ maxWidth: 600, mx: 'auto', border: '1px solid', borderColor: 'divider', backgroundImage: 'none', boxShadow: 'none' }}>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>Income, Expenses and Profit Breakdown</Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    {currentMonthLabel()} · Net profit {money(dashboard?.netProfit)}
+                  </Typography>
+                  {financialPie.length === 0 ? (
+                    <Typography color="text.secondary" sx={{ py: 10, textAlign: 'center' }}>
+                      No income or expense data for this month yet.
+                    </Typography>
+                  ) : (
+                    <Box sx={{ py: 1 }}>
+                      <FinancialPieChart data={financialPie} />
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, justifyContent: 'center', mt: 2 }}>
+                        <Typography variant="body2" color="text.secondary">Income: {money(financialSummary.income)}</Typography>
+                        <Typography variant="body2" color="text.secondary">Expenses: {money(financialSummary.expenses)}</Typography>
+                        <Typography variant="body2" color="text.secondary">Profit: {money(financialSummary.profit)}</Typography>
+                      </Box>
+                    </Box>
+                  )}
+                </CardContent>
+              </Card>
+            </Box>
+          )}
+
           {activeTab === 'fees' && (
             <>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(4, 1fr)' }, gap: 2, mb: 3 }}>

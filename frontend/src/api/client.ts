@@ -45,7 +45,7 @@ export type ExamResult = {
   grade?: string;
   remarks?: string;
 };
-export type Homework = { id?: number; title: string; subject: string; description?: string; assignedDate?: string; dueDate?: string; remarks?: string };
+export type Homework = { id?: number; title: string; subject: string; description?: string; assignedDate?: string; dueDate?: string; remarks?: string; classGrade?: string; batch?: Batch };
 export type NotificationLog = { id?: number; type: string; channel: string; recipient?: string; subject?: string; message: string; status?: string; createdAt?: string; student?: Student };
 
 export function getToken() {

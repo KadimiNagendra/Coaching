@@ -10,7 +10,7 @@
   <groupId>com.tuitionmanager</groupId>
   <artifactId>tuition-manager</artifactId>
   <version>0.1.0</version>
-  <name>Tuition Manager</name>
+  <name>Clarity</name>
   <description>Tuition Teacher Management and Expense Tracking System</description>
   <properties>
     <java.version>17</java.version>

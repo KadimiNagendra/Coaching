@@ -64,7 +64,13 @@ public class PortalService {
   }
 
   public List<Homework> homework() {
-    return homework.findAll();
+    UserAccount user = currentUser();
+    List<Student> studentsList = linkedStudents(user);
+    List<String> grades = studentsList.stream().map(s -> s.classGrade).filter(g -> g != null && !g.isBlank()).distinct().toList();
+    List<Long> batchIds = studentsList.stream().map(s -> s.batch).filter(b -> b != null).map(b -> b.id).distinct().toList();
+    return homework.findAll().stream()
+      .filter(h -> (h.classGrade != null && grades.contains(h.classGrade)) || (h.batch != null && batchIds.contains(h.batch.id)))
+      .toList();
   }
 
   public List<NotificationLog> notifications() {

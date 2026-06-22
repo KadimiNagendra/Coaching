@@ -51,7 +51,7 @@ export default function LoginPage() {
             <SchoolIcon />
           </Avatar>
           <Typography variant="h4" sx={{ color: '#f8fafc', fontWeight: 700 }}>
-            Tuition Manager
+            Clarity
           </Typography>
           <Typography sx={{ color: alpha('#ffffff', 0.65), mt: 1 }}>
             Professional coaching center management

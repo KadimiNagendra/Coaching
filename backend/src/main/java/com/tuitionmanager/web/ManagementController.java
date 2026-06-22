@@ -140,8 +140,21 @@ public class ManagementController {
   }
 
   @GetMapping("/homework") public List<Homework> homework() { return homework.findAll(); }
-  @PostMapping("/homework") public Homework createHomework(@RequestBody Homework item) { return homework.save(item); }
-  @PutMapping("/homework/{id}") public Homework updateHomework(@PathVariable Long id, @RequestBody Homework item) { item.id = id; return homework.save(item); }
+  @PostMapping("/homework") public Homework createHomework(@RequestBody Homework item) {
+    if (item.batch != null && item.batch.id != null) {
+      item.batch = batches.findById(item.batch.id).orElseThrow();
+    }
+    return homework.save(item);
+  }
+  @PutMapping("/homework/{id}") public Homework updateHomework(@PathVariable Long id, @RequestBody Homework item) {
+    item.id = id;
+    if (item.batch != null && item.batch.id != null) {
+      item.batch = batches.findById(item.batch.id).orElseThrow();
+    } else {
+      item.batch = null;
+    }
+    return homework.save(item);
+  }
   @DeleteMapping("/homework/{id}") public void deleteHomework(@PathVariable Long id) { homeworkSubmissions.findAll().stream().filter(s -> s.homework != null && id.equals(s.homework.id)).forEach(homeworkSubmissions::delete); homework.deleteById(id); }
   @GetMapping("/homework/{id}/submissions") public List<HomeworkSubmission> submissions(@PathVariable Long id) { return homeworkSubmissions.findAll().stream().filter(s -> s.homework != null && id.equals(s.homework.id)).toList(); }
   @PostMapping("/homework/{id}/submissions") public HomeworkSubmission addSubmission(@PathVariable Long id, @RequestBody HomeworkSubmission submission) { submission.homework = homework.findById(id).orElseThrow(); return homeworkSubmissions.save(submission); }

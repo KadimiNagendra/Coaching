@@ -15,5 +15,6 @@ public class Homework {
   public LocalDate assignedDate = LocalDate.now();
   public LocalDate dueDate;
   @ManyToOne public Batch batch;
+  public String classGrade;
   public String remarks;
 }

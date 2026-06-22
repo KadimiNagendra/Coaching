@@ -23,13 +23,11 @@ const teacherNav = [
   { label: 'Dashboard', path: '/dashboard', icon: <DashboardIcon fontSize="small" /> },
   { label: 'Students', path: '/students', icon: <GroupIcon fontSize="small" /> },
   { label: 'Batches', path: '/batches', icon: <CalendarMonthIcon fontSize="small" /> },
-  { label: 'Fees', path: '/fees', icon: <PaymentsIcon fontSize="small" /> },
+  { label: 'Finance', path: '/finance', icon: <PaymentsIcon fontSize="small" /> },
   { label: 'Attendance', path: '/attendance', icon: <FactCheckIcon fontSize="small" /> },
   { label: 'Exams', path: '/exams', icon: <AssessmentIcon fontSize="small" /> },
   { label: 'Results', path: '/results', icon: <EmojiEventsOutlinedIcon fontSize="small" /> },
   { label: 'Homework', path: '/homework', icon: <AssignmentIcon fontSize="small" /> },
-  { label: 'Expenses', path: '/expenses', icon: <ReceiptLongIcon fontSize="small" /> },
-  { label: 'Income', path: '/income', icon: <TrendingUpIcon fontSize="small" /> },
   { label: 'Reports', path: '/reports', icon: <AssessmentIcon fontSize="small" /> },
   { label: 'Notifications', path: '/notifications', icon: <NotificationsIcon fontSize="small" /> }
 ];
@@ -64,7 +62,7 @@ export function AppShell({ children }: PropsWithChildren) {
         </Avatar>
         <Box>
           <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2, color: '#f8fafc' }}>
-            Tuition Manager
+            Clarity
           </Typography>
           <Typography variant="caption" sx={{ color: alpha('#ffffff', 0.55), letterSpacing: '0.04em', textTransform: 'uppercase' }}>
             {portalLabel}

@@ -34,7 +34,16 @@ export type FeePayment = { id?: number; paymentId?: string; student: Student; fe
 export type AttendanceRecord = { id?: number; student: Student; attendanceDate: string; status: 'PRESENT' | 'ABSENT' | 'LATE'; remarks?: string };
 export type Expense = { id?: number; expenseId?: string; expenseDate?: string; expenseCategory: string; amount: number; vendorName?: string; description?: string; paymentMethod?: string; receiptImagePath?: string };
 export type IncomeEntry = { id?: number; incomeId?: string; source: string; amount: number; incomeDate?: string; description?: string };
-export type Exam = { id?: number; examName: string; subject: string; classGrade: string; examDate?: string; totalMarks?: number; remarks?: string };
+export type Exam = {
+  id?: number;
+  examName: string;
+  examType?: string;
+  subject: string;
+  classGrade: string;
+  examDate?: string;
+  totalMarks?: number;
+  remarks?: string;
+};
 export type ExamResult = {
   id?: number;
   exam?: Exam;
@@ -46,12 +55,23 @@ export type ExamResult = {
   remarks?: string;
 };
 export type Homework = { id?: number; title: string; subject: string; description?: string; assignedDate?: string; dueDate?: string; remarks?: string; classGrade?: string; batch?: Batch };
+export type TopicPlan = {
+  id?: number;
+  planDate: string;
+  batch: Batch;
+  subject: string;
+  chapter: string;
+  topic: string;
+};
+
 export type ClassSession = {
   id?: number;
   sessionDate: string;
   batch?: Batch;
   subject: string;
   classGrade: string;
+  chapter?: string;
+  topic?: string;
   topicsCovered?: string;
   remarks?: string;
 };
@@ -136,6 +156,10 @@ export const api = {
   classSessions: () => request<ClassSession[]>('/api/v1/class-sessions'),
   createClassSession: (session: ClassSession) => request<ClassSession>('/api/v1/class-sessions', { method: 'POST', body: JSON.stringify(session) }),
   deleteClassSession: (id: number) => request<void>(`/api/v1/class-sessions/${id}`, { method: 'DELETE' }),
+  topicPlans: () => request<TopicPlan[]>('/api/v1/topic-plans'),
+  createTopicPlan: (plan: TopicPlan) => request<TopicPlan>('/api/v1/topic-plans', { method: 'POST', body: JSON.stringify(plan) }),
+  updateTopicPlan: (id: number, plan: TopicPlan) => request<TopicPlan>(`/api/v1/topic-plans/${id}`, { method: 'PUT', body: JSON.stringify(plan) }),
+  deleteTopicPlan: (id: number) => request<void>(`/api/v1/topic-plans/${id}`, { method: 'DELETE' }),
   expenses: () => request<Expense[]>('/api/v1/expenses'),
   createExpense: (expense: Expense) => request<Expense>('/api/v1/expenses', { method: 'POST', body: JSON.stringify(expense) }),
   updateExpense: (id: number, expense: Expense) => request<Expense>(`/api/v1/expenses/${id}`, { method: 'PUT', body: JSON.stringify(expense) }),

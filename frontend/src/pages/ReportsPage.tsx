@@ -10,7 +10,6 @@ const reports = [
   { label: 'Fee Collection Report', type: 'fees', description: 'All fee payments with paid and due amounts.' },
   { label: 'Expense Report', type: 'expenses', description: 'Business expenses with category and vendor details.' },
   { label: 'Income Report', type: 'income', description: 'Admission fees and other income entries.' },
-  { label: 'Profit & Loss Report', type: 'profit-loss', description: 'Income, fee collections, expenses, and net profit.' },
   { label: 'Exam Performance Report', type: 'exams', description: 'Exam results with marks, percentage, and grades.' }
 ] as const;
 

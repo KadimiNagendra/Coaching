@@ -10,6 +10,7 @@ public class Exam {
   public Long id;
 
   public String examName;
+  public String examType;
   public String subject;
   public String classGrade;
   public LocalDate examDate;

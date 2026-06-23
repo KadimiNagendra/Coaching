@@ -13,7 +13,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 @Configuration
 public class SeedData {
   @Bean
-  CommandLineRunner seed(UserAccountRepository users, BatchRepository batches, StudentRepository students, FeePaymentRepository fees, AttendanceRecordRepository attendance, ExamRepository exams, ExamResultRepository results, HomeworkRepository homework, ExpenseRepository expenses, IncomeEntryRepository income, NotificationLogRepository notifications, PasswordEncoder encoder) {
+  CommandLineRunner seed(UserAccountRepository users, BatchRepository batches, StudentRepository students, FeePaymentRepository fees, AttendanceRecordRepository attendance, ExamRepository exams, ExamResultRepository results, HomeworkRepository homework, ExpenseRepository expenses, IncomeEntryRepository income, NotificationLogRepository notifications, TopicPlanRepository topicPlans, PasswordEncoder encoder) {
     return args -> {
       if (users.count() == 0) {
         UserAccount teacher = new UserAccount();
@@ -23,8 +23,10 @@ public class SeedData {
         teacher.role = Role.TEACHER;
         users.save(teacher);
       }
+
       if (students.count() > 0) {
         ensurePortalUsers(users, students, encoder);
+        seedTopicPlans(batches, topicPlans);
         return;
       }
 
@@ -45,7 +47,7 @@ public class SeedData {
       attendance.save(att(s2, AttendanceStatus.ABSENT));
       attendance.save(att(s3, AttendanceStatus.LATE));
 
-      Exam exam = new Exam(); exam.examName = "June Unit Test"; exam.subject = "Mathematics"; exam.classGrade = "Class 10"; exam.examDate = LocalDate.now().plusDays(5); exam.totalMarks = 100; exams.save(exam);
+      Exam exam = new Exam(); exam.examName = "June Unit Test"; exam.examType = "Unit Test"; exam.subject = "Mathematics"; exam.classGrade = "Class 10"; exam.examDate = LocalDate.now().plusDays(5); exam.totalMarks = 100; exams.save(exam);
       ExamResult result = new ExamResult(); result.exam = exam; result.student = s3; result.totalMarks = 100; result.obtainedMarks = 86; results.save(result);
 
       Homework hw = new Homework(); hw.title = "Algebra Practice"; hw.subject = "Mathematics"; hw.batch = math10; hw.description = "Complete exercise 4.1 and 4.2."; hw.dueDate = LocalDate.now().plusDays(2); homework.save(hw);
@@ -56,7 +58,28 @@ public class SeedData {
       NotificationLog notification = new NotificationLog(); notification.type = NotificationType.FEE_DUE_REMINDER; notification.channel = NotificationChannel.WHATSAPP; notification.student = s2; notification.recipient = s2.parent.mobileNumber; notification.subject = "Fee reminder"; notification.message = "June fee balance is pending."; notifications.save(notification);
 
       ensurePortalUsers(users, students, encoder);
+      seedTopicPlans(batches, topicPlans);
     };
+  }
+
+  private void seedTopicPlans(BatchRepository batches, TopicPlanRepository topicPlans) {
+    if (topicPlans.count() == 0) {
+      Batch b1 = batches.findAll().stream().filter(b -> b.batchName.contains("Class 10")).findFirst().orElse(null);
+      Batch b2 = batches.findAll().stream().filter(b -> b.batchName.contains("Class 8")).findFirst().orElse(null);
+      Batch b3 = batches.findAll().stream().filter(b -> b.batchName.contains("Class 6")).findFirst().orElse(null);
+
+      if (b1 != null) {
+        TopicPlan p1 = new TopicPlan(); p1.planDate = LocalDate.now(); p1.batch = b1; p1.subject = b1.subject; p1.chapter = "Algebra"; p1.topic = "Linear Equations"; topicPlans.save(p1);
+        TopicPlan p2 = new TopicPlan(); p2.planDate = LocalDate.now().minusDays(1); p2.batch = b1; p2.subject = b1.subject; p2.chapter = "Algebra"; p2.topic = "Quadratic Equations"; topicPlans.save(p2);
+        TopicPlan p3 = new TopicPlan(); p3.planDate = LocalDate.now().minusDays(2); p3.batch = b1; p3.subject = b1.subject; p3.chapter = "Geometry"; p3.topic = "Triangles"; topicPlans.save(p3);
+      }
+      if (b2 != null) {
+        TopicPlan p4 = new TopicPlan(); p4.planDate = LocalDate.now(); p4.batch = b2; p4.subject = b2.subject; p4.chapter = "Physics"; p4.topic = "Light & Optics"; topicPlans.save(p4);
+      }
+      if (b3 != null) {
+        TopicPlan p5 = new TopicPlan(); p5.planDate = LocalDate.now().plusDays(1); p5.batch = b3; p5.subject = b3.subject; p5.chapter = "Arithmetic"; p5.topic = "Fractions"; topicPlans.save(p5);
+      }
+    }
   }
 
   private void ensurePortalUsers(UserAccountRepository users, StudentRepository students, PasswordEncoder encoder) {

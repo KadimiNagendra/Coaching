@@ -13,6 +13,7 @@ import HomeworkPage from './pages/HomeworkPage';
 import ReportsPage from './pages/ReportsPage';
 import NotificationsPage from './pages/NotificationsPage';
 import PortalPage from './pages/PortalPage';
+import TopicsMasterPage from './pages/TopicsMasterPage';
 
 function RootRedirect() {
   const user = getUser();
@@ -36,6 +37,7 @@ export default function App() {
       <Route path="/homework" element={<Protected allow={['TEACHER']}><HomeworkPage /></Protected>} />
       <Route path="/reports" element={<Protected allow={['TEACHER']}><ReportsPage /></Protected>} />
       <Route path="/notifications" element={<Protected allow={['TEACHER']}><NotificationsPage /></Protected>} />
+      <Route path="/topics-master" element={<Protected allow={['TEACHER']}><TopicsMasterPage /></Protected>} />
     </Routes>
   );
 }

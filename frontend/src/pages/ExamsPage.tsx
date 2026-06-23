@@ -2,12 +2,12 @@ import { FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
-import { Box, Button, Card, CardContent, Dialog, DialogContent, DialogTitle, IconButton, Stack, Table, TableBody, TableCell, TableHead, TableRow, TextField } from '@mui/material';
+import { Box, Button, Card, CardContent, Dialog, DialogContent, DialogTitle, IconButton, Stack, Table, TableBody, TableCell, TableHead, TableRow, TextField, MenuItem } from '@mui/material';
 import { api, Exam } from '../api/client';
 import { PageHeader } from '../components/PageHeader';
 import { futureDateOrEmpty, isPastDate, today } from '../utils/dates';
 
-const emptyForm = (): Exam => ({ examName: '', subject: '', classGrade: '', examDate: '' });
+const emptyForm = (): Exam => ({ examName: '', examType: '', subject: '', classGrade: '', examDate: '' });
 const textFields: Array<[keyof Exam, string]> = [['examName', 'Exam Name'], ['subject', 'Subject'], ['classGrade', 'Class']];
 
 export default function ExamsPage() {
@@ -39,7 +39,7 @@ export default function ExamsPage() {
 
   function openEdit(item: Exam) {
     setEditingId(item.id ?? null);
-    setForm({ examName: item.examName, subject: item.subject, classGrade: item.classGrade, examDate: futureDateOrEmpty(item.examDate), totalMarks: item.totalMarks, remarks: item.remarks });
+    setForm({ examName: item.examName, examType: item.examType ?? '', subject: item.subject, classGrade: item.classGrade, examDate: futureDateOrEmpty(item.examDate), totalMarks: item.totalMarks, remarks: item.remarks });
     setDateError('');
     setOpen(true);
   }
@@ -73,6 +73,7 @@ export default function ExamsPage() {
             <TableHead>
               <TableRow>
                 <TableCell>Exam Name</TableCell>
+                <TableCell>Exam Type</TableCell>
                 <TableCell>Subject</TableCell>
                 <TableCell>Class</TableCell>
                 <TableCell>Date</TableCell>
@@ -83,6 +84,7 @@ export default function ExamsPage() {
               {data.map((item) => (
                 <TableRow key={item.id}>
                   <TableCell>{item.examName}</TableCell>
+                  <TableCell>{item.examType ?? '—'}</TableCell>
                   <TableCell>{item.subject}</TableCell>
                   <TableCell>{item.classGrade}</TableCell>
                   <TableCell>{item.examDate}</TableCell>
@@ -105,6 +107,19 @@ export default function ExamsPage() {
             {textFields.map(([key, label]) => (
               <TextField key={key} label={label} fullWidth value={String(form[key] ?? '')} onChange={(e) => setForm({ ...form, [key]: e.target.value })} />
             ))}
+            <TextField
+              select
+              label="Exam Type"
+              fullWidth
+              value={form.examType ?? ''}
+              onChange={(e) => setForm({ ...form, examType: e.target.value })}
+            >
+              <MenuItem value="">-- Select Exam Type --</MenuItem>
+              <MenuItem value="Slip Test">Slip Test</MenuItem>
+              <MenuItem value="Surprise Test">Surprise Test</MenuItem>
+              <MenuItem value="Quarterly Test">Quarterly Test</MenuItem>
+              <MenuItem value="Unit Test">Unit Test</MenuItem>
+            </TextField>
             <TextField
               label="Date"
               type="date"

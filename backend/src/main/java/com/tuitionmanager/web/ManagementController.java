@@ -40,8 +40,9 @@ public class ManagementController {
   private final AuditService audit;
   private final ReportService reports;
   private final ClassSessionRepository classSessions;
+  private final TopicPlanRepository topicPlans;
 
-  public ManagementController(StudentRepository students, ParentContactRepository parents, BatchRepository batches, FeePaymentRepository fees, AttendanceRecordRepository attendance, ExamRepository exams, ExamResultRepository examResults, HomeworkRepository homework, HomeworkSubmissionRepository homeworkSubmissions, ExpenseRepository expenses, IncomeEntryRepository income, NotificationLogRepository notifications, DashboardService dashboardService, FileStorageService files, AuditService audit, ReportService reports, ClassSessionRepository classSessions) {
+  public ManagementController(StudentRepository students, ParentContactRepository parents, BatchRepository batches, FeePaymentRepository fees, AttendanceRecordRepository attendance, ExamRepository exams, ExamResultRepository examResults, HomeworkRepository homework, HomeworkSubmissionRepository homeworkSubmissions, ExpenseRepository expenses, IncomeEntryRepository income, NotificationLogRepository notifications, DashboardService dashboardService, FileStorageService files, AuditService audit, ReportService reports, ClassSessionRepository classSessions, TopicPlanRepository topicPlans) {
     this.students = students;
     this.parents = parents;
     this.batches = batches;
@@ -59,6 +60,7 @@ public class ManagementController {
     this.audit = audit;
     this.reports = reports;
     this.classSessions = classSessions;
+    this.topicPlans = topicPlans;
   }
 
   @GetMapping("/students") public List<Student> students(@RequestParam(required = false) String q, @RequestParam(required = false) StudentStatus status) {
@@ -169,6 +171,22 @@ public class ManagementController {
     return classSessions.save(item);
   }
   @DeleteMapping("/class-sessions/{id}") public void deleteClassSession(@PathVariable Long id) { classSessions.deleteById(id); }
+
+  @GetMapping("/topic-plans") public List<TopicPlan> topicPlans() { return topicPlans.findAll(); }
+  @PostMapping("/topic-plans") public TopicPlan createTopicPlan(@RequestBody TopicPlan plan) {
+    if (plan.batch != null && plan.batch.id != null) {
+      plan.batch = batches.findById(plan.batch.id).orElseThrow();
+    }
+    return topicPlans.save(plan);
+  }
+  @PutMapping("/topic-plans/{id}") public TopicPlan updateTopicPlan(@PathVariable Long id, @RequestBody TopicPlan plan) {
+    plan.id = id;
+    if (plan.batch != null && plan.batch.id != null) {
+      plan.batch = batches.findById(plan.batch.id).orElseThrow();
+    }
+    return topicPlans.save(plan);
+  }
+  @DeleteMapping("/topic-plans/{id}") public void deleteTopicPlan(@PathVariable Long id) { topicPlans.deleteById(id); }
 
   @GetMapping("/expenses") public List<Expense> expenses() { return expenses.findAll(); }
   @PostMapping("/expenses") public Expense createExpense(@RequestBody Expense expense) { if (expense.expenseId == null || expense.expenseId.isBlank()) expense.expenseId = "EXP-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(); return expenses.save(expense); }

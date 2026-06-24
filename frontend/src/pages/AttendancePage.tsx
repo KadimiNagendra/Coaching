@@ -60,7 +60,6 @@ export default function AttendancePage() {
 
   return (
     <>
-      <PageHeader title="Attendance" subtitle="Choose a calendar date to view and update that date's attendance records." />
       <Card sx={{ mb: 2 }}>
         <CardContent>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ alignItems: { md: 'center' }, justifyContent: 'space-between' }}>

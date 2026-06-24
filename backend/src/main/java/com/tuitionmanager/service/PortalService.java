@@ -57,6 +57,22 @@ public class PortalService {
     user.email = request.newUsername();
     user.passwordHash = passwordEncoder.encode(request.newPassword());
     users.save(user);
+
+    // Sync credentials to Student records so teachers can view the updated logins
+    if (user.role == Role.STUDENT && user.linkedStudentId != null) {
+      students.findById(user.linkedStudentId).ifPresent(student -> {
+        student.initialStudentUsername = request.newUsername();
+        student.initialStudentPassword = request.newPassword();
+        students.save(student);
+      });
+    } else if (user.role == Role.PARENT && user.linkedParentId != null) {
+      List<Student> children = students.findByParentId(user.linkedParentId);
+      for (Student student : children) {
+        student.initialParentUsername = request.newUsername();
+        student.initialParentPassword = request.newPassword();
+        students.save(student);
+      }
+    }
   }
 
   public List<FeePayment> fees() {

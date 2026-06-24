@@ -120,7 +120,9 @@ export default function HomeworkPage() {
 
   return (
     <>
-      <PageHeader title="Homework" subtitle="Assign work, due dates, and feedback." actionLabel="Assign Homework" onAction={openCreate} />
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+        <Button variant="contained" onClick={openCreate}>Assign Homework</Button>
+      </Box>
       <Card>
         <CardContent>
           <Table>

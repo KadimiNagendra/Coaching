@@ -73,13 +73,28 @@ export function UpcomingExamsCard({ exams = [] }: { exams?: ExamItem[] }) {
         ) : (
           <Box
             sx={{
-              display: 'grid',
-              gridTemplateColumns: {
-                xs: '1fr',
-                sm: '1fr 1fr',
-                md: 'repeat(auto-fill, minmax(300px, 1fr))'
+              display: 'flex',
+              flexDirection: 'row',
+              overflowX: 'auto',
+              gap: 2,
+              pb: 1.5,
+              flexGrow: 1,
+              alignItems: 'stretch',
+              scrollbarWidth: 'thin',
+              '&::-webkit-scrollbar': {
+                height: '6px'
               },
-              gap: 2
+              '&::-webkit-scrollbar-track': {
+                backgroundColor: 'rgba(0,0,0,0.03)',
+                borderRadius: '3px'
+              },
+              '&::-webkit-scrollbar-thumb': {
+                backgroundColor: 'rgba(0,0,0,0.12)',
+                borderRadius: '3px',
+                '&:hover': {
+                  backgroundColor: 'rgba(0,0,0,0.24)'
+                }
+              }
             }}
           >
             {exams.map((exam, index) => {
@@ -95,12 +110,15 @@ export function UpcomingExamsCard({ exams = [] }: { exams?: ExamItem[] }) {
                   sx={{
                     display: 'flex',
                     flexDirection: 'column',
+                    justifyContent: 'space-between',
                     gap: 1.25,
                     p: 1.75,
                     borderRadius: 2,
                     border: '1px solid',
                     borderColor: alpha('#0f172a', 0.08),
                     bgcolor: alpha('#ffffff', 0.9),
+                    flexShrink: 0,
+                    width: { xs: '260px', sm: '300px' },
                     transition: 'box-shadow 0.2s, transform 0.2s',
                     '&:hover': {
                       boxShadow: '0 8px 20px rgba(15, 23, 42, 0.06)',
@@ -134,23 +152,24 @@ export function UpcomingExamsCard({ exams = [] }: { exams?: ExamItem[] }) {
                     </Box>
                   </Box>
 
-                  <Divider sx={{ borderColor: alpha('#0f172a', 0.04) }} />
-
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'text.secondary' }}>
-                      <EventOutlinedIcon sx={{ fontSize: 15 }} />
-                      <Typography variant="caption" sx={{ fontWeight: 600 }}>
-                        {formatExamDate(examDate)}
-                      </Typography>
+                  <Box sx={{ mt: 'auto' }}>
+                    <Divider sx={{ borderColor: alpha('#0f172a', 0.04), mb: 1.25 }} />
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'text.secondary' }}>
+                        <EventOutlinedIcon sx={{ fontSize: 15 }} />
+                        <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                          {formatExamDate(examDate)}
+                        </Typography>
+                      </Box>
+                      {relative && (
+                        <Chip
+                          label={relative}
+                          size="small"
+                          color={relative === 'Today' ? 'warning' : 'success'}
+                          sx={{ fontWeight: 600, height: 20, fontSize: '0.7rem' }}
+                        />
+                      )}
                     </Box>
-                    {relative && (
-                      <Chip
-                        label={relative}
-                        size="small"
-                        color={relative === 'Today' ? 'warning' : 'success'}
-                        sx={{ fontWeight: 600, height: 20, fontSize: '0.7rem' }}
-                      />
-                    )}
                   </Box>
                 </Box>
               );

@@ -66,7 +66,9 @@ export default function ExamsPage() {
 
   return (
     <>
-      <PageHeader title="Exams" subtitle="Schedule tests and prepare progress tracking." actionLabel="Add Exam" onAction={openCreate} />
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+        <Button variant="contained" onClick={openCreate}>Add Exam</Button>
+      </Box>
       <Card>
         <CardContent>
           <Table>

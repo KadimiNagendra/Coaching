@@ -71,7 +71,9 @@ export default function BatchesPage() {
 
   return (
     <>
-      <PageHeader title="Batches" subtitle="Create and review timetable batches." actionLabel="Add Batch" onAction={openCreate} />
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+        <Button variant="contained" onClick={openCreate}>Add Batch</Button>
+      </Box>
       <Card>
         <CardContent>
           <Table>

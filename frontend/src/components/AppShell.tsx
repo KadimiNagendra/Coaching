@@ -176,10 +176,7 @@ export function AppShell({ children }: PropsWithChildren) {
             <MenuIcon />
           </IconButton>
           <Box sx={{ flexGrow: 1 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600, color: 'text.primary' }}>
-              After-school tuition operations
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="subtitle1" sx={{ fontWeight: 600, color: 'text.primary' }}>
               {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
             </Typography>
           </Box>

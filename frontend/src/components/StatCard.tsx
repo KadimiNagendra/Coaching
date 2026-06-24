@@ -11,6 +11,7 @@ export function StatCard({ label, value, helper, accent = 'primary', onClick }: 
     <Card
       onClick={onClick}
       sx={{
+        height: '100%',
         position: 'relative',
         overflow: 'hidden',
         cursor: onClick ? 'pointer' : 'default',
@@ -33,7 +34,18 @@ export function StatCard({ label, value, helper, accent = 'primary', onClick }: 
         }
       }}
     >
-      <CardContent sx={{ pl: 2.5 }}>
+      <CardContent
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          textAlign: 'center',
+          height: '100%',
+          p: 2,
+          '&:last-child': { pb: 2 }
+        }}
+      >
         <Typography color="text.secondary" variant="body2" sx={{ fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: '0.75rem' }}>
           {label}
         </Typography>

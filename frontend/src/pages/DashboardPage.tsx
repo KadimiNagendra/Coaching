@@ -110,48 +110,52 @@ export default function DashboardPage() {
   }, [todayAttendance]);
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-      <PageHeader title="Dashboard" subtitle="A daily operational command center for your tuition classes." />
-      
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' }, gap: 2 }}>
-        <StatCard label="Total Students" value={data?.totalStudents ?? 0} helper={`${data?.activeStudents ?? 0} active`} accent="primary" onClick={() => setActiveModal('students')} />
-        <StatCard label="Present Today" value={data?.attendancePresentToday ?? 0} helper={`${data?.attendanceAbsentToday ?? 0} absent`} accent="success" onClick={() => setActiveModal('attendance')} />
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 0.5 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '180px 1fr', md: '200px 1fr' }, gap: 2, alignItems: 'stretch' }}>
+        <Stack spacing={2} sx={{ height: '100%' }}>
+          <Box sx={{ flex: 1 }}>
+            <StatCard label="Total Students" value={data?.totalStudents ?? 0} helper={`${data?.activeStudents ?? 0} active`} accent="primary" onClick={() => setActiveModal('students')} />
+          </Box>
+          <Box sx={{ flex: 1 }}>
+            <StatCard label="Present Today" value={data?.attendancePresentToday ?? 0} helper={`${data?.attendanceAbsentToday ?? 0} absent`} accent="success" onClick={() => setActiveModal('attendance')} />
+          </Box>
+        </Stack>
+        <Box sx={{ minWidth: 0 }}>
+          <UpcomingExamsCard exams={data?.upcomingExams} />
+        </Box>
       </Box>
 
-      {/* Upcoming Exams */}
-      <UpcomingExamsCard exams={data?.upcomingExams} />
-
       {/* Interactive Calendar & Selected Date Teaching Plan split container */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '7fr 5fr' }, gap: 3 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '5fr 7fr' }, gap: 3, height: { xs: 'auto', md: '320px' } }}>
         {/* Left Column: Calendar Card */}
         <Card sx={{ height: '100%', borderRadius: 3 }}>
-          <CardContent>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700 }}>Upcoming Classes Calendar</Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Upcoming Classes Calendar</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                 <IconButton size="small" onClick={() => handleMonthChange(-1)}>
-                  <ChevronLeftIcon />
+                  <ChevronLeftIcon fontSize="small" />
                 </IconButton>
-                <Typography sx={{ fontWeight: 600, minWidth: 140, textAlign: 'center' }}>
+                <Typography sx={{ fontWeight: 600, minWidth: 110, textAlign: 'center', fontSize: '0.85rem' }}>
                   {currentMonth.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
                 </Typography>
                 <IconButton size="small" onClick={() => handleMonthChange(1)}>
-                  <ChevronRightIcon />
+                  <ChevronRightIcon fontSize="small" />
                 </IconButton>
               </Box>
             </Box>
             
             {/* Weekdays Row */}
-            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 1, mb: 1, textAlign: 'center' }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 0.5, mb: 0.5, textAlign: 'center' }}>
               {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-                <Typography key={day} variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', py: 0.5 }}>
+                <Typography key={day} variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', py: 0.25, fontSize: '0.75rem' }}>
                   {day}
                 </Typography>
               ))}
             </Box>
             
             {/* Days Grid */}
-            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 1 }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 0.5 }}>
               {calendarCells.map((cell) => {
                 const isSelected = cell.dateStr === selectedDate;
                 const isToday = cell.dateStr === todayStr;
@@ -168,13 +172,13 @@ export default function DashboardPage() {
                       }
                     }}
                     sx={{
-                      aspectRatio: '1',
+                      aspectRatio: { xs: '1', md: '1.7' },
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
                       justifyContent: 'center',
                       position: 'relative',
-                      borderRadius: 2,
+                      borderRadius: 1.5,
                       cursor: 'pointer',
                       bgcolor: isSelected 
                         ? 'primary.main' 
@@ -194,7 +198,7 @@ export default function DashboardPage() {
                       }
                     }}
                   >
-                    <Typography sx={{ fontWeight: isToday || isSelected ? 700 : 500, fontSize: '0.9rem' }}>
+                    <Typography sx={{ fontWeight: isToday || isSelected ? 700 : 500, fontSize: '0.8rem' }}>
                       {cell.day}
                     </Typography>
                     
@@ -203,9 +207,9 @@ export default function DashboardPage() {
                       <Box
                         sx={{
                           position: 'absolute',
-                          bottom: 5,
-                          width: 6,
-                          height: 6,
+                          bottom: 3,
+                          width: 4,
+                          height: 4,
                           borderRadius: '50%',
                           bgcolor: isSelected ? '#ffffff' : 'primary.main'
                         }}
@@ -217,48 +221,69 @@ export default function DashboardPage() {
             </Box>
           </CardContent>
         </Card>
-
+ 
         {/* Right Column: Plans for Selected Date Card */}
         <Card sx={{ height: '100%', borderRadius: 3, display: 'flex', flexDirection: 'column' }}>
-          <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
-            <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
+          <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', p: 2, '&:last-child': { pb: 2 } }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 0.25 }}>
               Teaching Plans
             </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block' }}>
+            <Typography variant="caption" color="text.secondary" sx={{ mb: 1.5, display: 'block' }}>
               Scheduled for {new Date(selectedDate).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
             </Typography>
             
-            <Box sx={{ flexGrow: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+            <Box
+              sx={{
+                height: '210px',
+                overflowY: 'auto',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 1,
+                pr: 0.5,
+                scrollbarWidth: 'thin',
+                '&::-webkit-scrollbar': {
+                  width: '4px'
+                },
+                '&::-webkit-scrollbar-track': {
+                  backgroundColor: 'rgba(0,0,0,0.02)'
+                },
+                '&::-webkit-scrollbar-thumb': {
+                  backgroundColor: 'rgba(0,0,0,0.1)',
+                  borderRadius: '2px'
+                }
+              }}
+            >
               {selectedDatePlans.map((plan) => (
                 <Box
                   key={plan.id}
                   sx={{
-                    p: 2,
-                    borderRadius: 2,
+                    p: 1.25,
+                    borderRadius: 1.5,
                     border: '1px solid',
                     borderColor: alpha('#818cf8', 0.15),
                     bgcolor: alpha('#818cf8', 0.02),
                     position: 'relative',
                     overflow: 'hidden',
-                    pl: 2.5,
+                    pl: 2,
+                    flexShrink: 0,
                     '&::before': {
                       content: '""',
                       position: 'absolute',
                       left: 0,
                       top: 0,
                       bottom: 0,
-                      width: 4,
+                      width: 3,
                       bgcolor: 'primary.main'
                     }
                   }}
                 >
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.25, fontSize: '0.8rem' }}>
                     {plan.batch?.batchName ?? '—'}
                   </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.825rem', mb: 1 }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem', mb: 0.5, display: 'block' }}>
                     Subject: <strong>{plan.subject}</strong> | Grade: <strong>{plan.batch?.classGrade ?? '—'}</strong>
                   </Typography>
-                  <Typography sx={{ fontWeight: 700, fontSize: '0.85rem', color: 'primary.main' }}>
+                  <Typography sx={{ fontWeight: 700, fontSize: '0.775rem', color: 'primary.main' }}>
                     {plan.chapter}: {plan.topic}
                   </Typography>
                 </Box>
@@ -271,13 +296,13 @@ export default function DashboardPage() {
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    py: 6,
+                    py: 3,
                     color: 'text.secondary',
                     textAlign: 'center'
                   }}
                 >
-                  <Typography sx={{ fontWeight: 600, mb: 0.5, fontSize: '0.95rem' }}>No classes scheduled</Typography>
-                  <Typography variant="caption" color="text.secondary">
+                  <Typography sx={{ fontWeight: 600, mb: 0.5, fontSize: '0.85rem' }}>No classes scheduled</Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
                     Select another date or manage plans in Topics Master.
                   </Typography>
                 </Box>

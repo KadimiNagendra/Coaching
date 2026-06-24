@@ -83,24 +83,47 @@ public class SeedData {
   }
 
   private void ensurePortalUsers(UserAccountRepository users, StudentRepository students, PasswordEncoder encoder) {
-    students.findAll().stream().filter(student -> "STU-1001".equals(student.studentId)).findFirst().ifPresent(s1 -> {
-      if (users.findByEmail("parent@example.com").isEmpty() && s1.parent != null) {
-        UserAccount parentUser = new UserAccount();
-        parentUser.email = "parent@example.com";
-        parentUser.fullName = s1.parent.name;
-        parentUser.passwordHash = encoder.encode("Parent@123");
-        parentUser.role = Role.PARENT;
-        parentUser.linkedParentId = s1.parent.id;
-        users.save(parentUser);
+    students.findAll().forEach(student -> {
+      boolean updated = false;
+      if (student.initialStudentUsername == null) {
+        String studentIdClean = student.studentId.toLowerCase().replace("-", "");
+        student.initialStudentUsername = "student_" + studentIdClean + "@tuition.com";
+        student.initialStudentPassword = "Stu@" + (100000 + new java.util.Random().nextInt(900000));
+        student.initialParentUsername = "parent_" + studentIdClean + "@tuition.com";
+        student.initialParentPassword = "Par@" + (100000 + new java.util.Random().nextInt(900000));
+        updated = true;
       }
-      if (users.findByEmail("student@example.com").isEmpty()) {
+      
+      if ("STU-1001".equals(student.studentId)) {
+        student.initialStudentUsername = "student@example.com";
+        student.initialStudentPassword = "Student@123";
+        student.initialParentUsername = "parent@example.com";
+        student.initialParentPassword = "Parent@123";
+        updated = true;
+      }
+
+      if (updated) {
+        students.save(student);
+      }
+
+      if (users.findByEmail(student.initialStudentUsername).isEmpty()) {
         UserAccount studentUser = new UserAccount();
-        studentUser.email = "student@example.com";
-        studentUser.fullName = s1.studentName;
-        studentUser.passwordHash = encoder.encode("Student@123");
+        studentUser.email = student.initialStudentUsername;
+        studentUser.fullName = student.studentName;
+        studentUser.passwordHash = encoder.encode(student.initialStudentPassword);
         studentUser.role = Role.STUDENT;
-        studentUser.linkedStudentId = s1.id;
+        studentUser.linkedStudentId = student.id;
         users.save(studentUser);
+      }
+
+      if (student.parent != null && users.findByEmail(student.initialParentUsername).isEmpty()) {
+        UserAccount parentUser = new UserAccount();
+        parentUser.email = student.initialParentUsername;
+        parentUser.fullName = student.parent.name;
+        parentUser.passwordHash = encoder.encode(student.initialParentPassword);
+        parentUser.role = Role.PARENT;
+        parentUser.linkedParentId = student.parent.id;
+        users.save(parentUser);
       }
     });
   }

@@ -1,7 +1,10 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import {
+  Alert,
   Box,
+  Button,
   Card,
   CardContent,
   Chip,
@@ -14,21 +17,61 @@ import {
   TableCell,
   TableHead,
   TableRow,
+  TextField,
   Typography
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
-import { api, getUser } from '../api/client';
+import { api, getUser, setToken, setUser } from '../api/client';
 import { PageHeader } from '../components/PageHeader';
 import { buildStudentPerformance, formatPercent } from '../utils/performance';
 
 const money = (value?: number) => `Rs ${Number(value ?? 0).toLocaleString('en-IN')}`;
 
-type TabKey = 'fees' | 'attendance' | 'exams' | 'homework' | 'notifications';
+type TabKey = 'fees' | 'attendance' | 'exams' | 'homework' | 'notifications' | 'credentials';
 
 export default function PortalPage() {
   const user = getUser();
   const isParent = user?.role === 'PARENT';
   const [activeTab, setActiveTab] = useState<TabKey>(isParent ? 'fees' : 'attendance');
+  const navigate = useNavigate();
+
+  const [newUsername, setNewUsername] = useState(user?.email ?? '');
+  const [newPassword, setNewPassword] = useState('');
+  const [settingsError, setSettingsError] = useState('');
+  const [settingsSuccess, setSettingsSuccess] = useState('');
+  const [resetting, setResetting] = useState(false);
+
+  async function handleResetSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setSettingsError('');
+    setSettingsSuccess('');
+    setResetting(true);
+
+    try {
+      await api.resetCredentials(newUsername, newPassword);
+      setSettingsSuccess('Credentials updated successfully. Logging you out...');
+      setTimeout(() => {
+        setToken(null);
+        setUser(null);
+        navigate('/login');
+      }, 2000);
+    } catch (err: any) {
+      let errMsg = 'Failed to update credentials. Please check format.';
+      if (err.message) {
+        try {
+          const parsed = JSON.parse(err.message);
+          if (parsed.message) {
+            errMsg = parsed.message;
+          }
+        } catch {
+          errMsg = err.message;
+        }
+      }
+      setSettingsError(errMsg);
+    } finally {
+      setResetting(false);
+    }
+  }
 
   const { data: overview } = useQuery({ queryKey: ['portal-overview'], queryFn: api.portalOverview });
   const { data: fees = [] } = useQuery({ queryKey: ['portal-fees'], queryFn: api.portalFees, enabled: isParent });
@@ -46,7 +89,8 @@ export default function PortalPage() {
       { key: 'attendance', label: 'Attendance' },
       { key: 'exams', label: 'Exams' },
       { key: 'homework', label: 'Homework' },
-      { key: 'notifications', label: 'Notifications' }
+      { key: 'notifications', label: 'Notifications' },
+      { key: 'credentials', label: 'Account Settings' }
     );
     return items;
   }, [isParent]);
@@ -218,6 +262,50 @@ export default function PortalPage() {
                 {notifications.length === 0 && <TableRow><TableCell colSpan={3}>No notifications found.</TableCell></TableRow>}
               </TableBody>
             </Table>
+          )}
+          {activeTab === 'credentials' && (
+            <Box sx={{ maxWidth: 480, mx: 'auto', py: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
+                Reset Credentials
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                Update your portal login email username and password. After resetting, you will be automatically signed out and prompted to log in with your new credentials.
+              </Typography>
+
+              {settingsError && <Alert severity="error" sx={{ mb: 2.5 }}>{settingsError}</Alert>}
+              {settingsSuccess && <Alert severity="success" sx={{ mb: 2.5 }}>{settingsSuccess}</Alert>}
+
+              <Stack component="form" spacing={2.5} onSubmit={handleResetSubmit}>
+                <TextField
+                  label="New Username (Email format)"
+                  type="email"
+                  required
+                  fullWidth
+                  value={newUsername}
+                  onChange={(e) => setNewUsername(e.target.value)}
+                  placeholder="e.g. child@domain.com"
+                />
+                
+                <TextField
+                  label="New Password"
+                  type="password"
+                  required
+                  fullWidth
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                />
+
+                <Button
+                  type="submit"
+                  variant="contained"
+                  size="large"
+                  disabled={resetting}
+                  sx={{ py: 1.25, mt: 1 }}
+                >
+                  {resetting ? 'Updating...' : 'Update Credentials'}
+                </Button>
+              </Stack>
+            </Box>
           )}
         </CardContent>
       </Card>

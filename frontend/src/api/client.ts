@@ -27,6 +27,10 @@ export type Student = {
   status?: 'ACTIVE' | 'INACTIVE';
   parent?: { id?: number; name: string; mobileNumber: string; email?: string; address?: string };
   batch?: { id?: number; batchName?: string };
+  initialStudentUsername?: string;
+  initialStudentPassword?: string;
+  initialParentUsername?: string;
+  initialParentPassword?: string;
 };
 
 export type Batch = { id?: number; batchName: string; subject: string; classGrade: string; startTime?: string; endTime?: string; daysOfWeek?: string; maximumStudents?: number };
@@ -128,6 +132,7 @@ export const api = {
   portalResults: () => request<ExamResult[]>('/api/v1/portal/results'),
   portalHomework: () => request<Homework[]>('/api/v1/portal/homework'),
   portalNotifications: () => request<NotificationLog[]>('/api/v1/portal/notifications'),
+  resetCredentials: (newUsername: string, newPassword: string) => request<void>('/api/v1/portal/reset-credentials', { method: 'POST', body: JSON.stringify({ newUsername, newPassword }) }),
   dashboard: () => request<DashboardSummary>('/api/v1/dashboard/summary'),
   students: () => request<Student[]>('/api/v1/students'),
   createStudent: (student: Student) => request<Student>('/api/v1/students', { method: 'POST', body: JSON.stringify(student) }),

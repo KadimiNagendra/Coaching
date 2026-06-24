@@ -19,6 +19,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 @RestController
 @RequestMapping("/api/v1")
@@ -41,8 +42,10 @@ public class ManagementController {
   private final ReportService reports;
   private final ClassSessionRepository classSessions;
   private final TopicPlanRepository topicPlans;
+  private final UserAccountRepository users;
+  private final PasswordEncoder passwordEncoder;
 
-  public ManagementController(StudentRepository students, ParentContactRepository parents, BatchRepository batches, FeePaymentRepository fees, AttendanceRecordRepository attendance, ExamRepository exams, ExamResultRepository examResults, HomeworkRepository homework, HomeworkSubmissionRepository homeworkSubmissions, ExpenseRepository expenses, IncomeEntryRepository income, NotificationLogRepository notifications, DashboardService dashboardService, FileStorageService files, AuditService audit, ReportService reports, ClassSessionRepository classSessions, TopicPlanRepository topicPlans) {
+  public ManagementController(StudentRepository students, ParentContactRepository parents, BatchRepository batches, FeePaymentRepository fees, AttendanceRecordRepository attendance, ExamRepository exams, ExamResultRepository examResults, HomeworkRepository homework, HomeworkSubmissionRepository homeworkSubmissions, ExpenseRepository expenses, IncomeEntryRepository income, NotificationLogRepository notifications, DashboardService dashboardService, FileStorageService files, AuditService audit, ReportService reports, ClassSessionRepository classSessions, TopicPlanRepository topicPlans, UserAccountRepository users, PasswordEncoder passwordEncoder) {
     this.students = students;
     this.parents = parents;
     this.batches = batches;
@@ -61,6 +64,8 @@ public class ManagementController {
     this.reports = reports;
     this.classSessions = classSessions;
     this.topicPlans = topicPlans;
+    this.users = users;
+    this.passwordEncoder = passwordEncoder;
   }
 
   @GetMapping("/students") public List<Student> students(@RequestParam(required = false) String q, @RequestParam(required = false) StudentStatus status) {
@@ -68,7 +73,44 @@ public class ManagementController {
     if (q != null && !q.isBlank()) return students.findByClassGradeContainingIgnoreCaseOrSubjectsEnrolledContainingIgnoreCaseOrStudentNameContainingIgnoreCase(q, q, q);
     return students.findAll();
   }
-  @PostMapping("/students") public Student createStudent(@RequestBody Student student) { if (student.studentId == null || student.studentId.isBlank()) student.studentId = "STU-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(); Student saved = students.save(student); audit.record("CREATE", "Student", saved.id, saved.studentName); return saved; }
+  @PostMapping("/students")
+  public Student createStudent(@RequestBody Student student) {
+    if (student.studentId == null || student.studentId.isBlank()) {
+      student.studentId = "STU-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+    }
+    
+    // Auto-generate credentials for student and parent
+    String studentIdClean = student.studentId.toLowerCase().replace("-", "");
+    student.initialStudentUsername = "student_" + studentIdClean + "@tuition.com";
+    student.initialStudentPassword = "Stu@" + (100000 + new java.util.Random().nextInt(900000));
+    student.initialParentUsername = "parent_" + studentIdClean + "@tuition.com";
+    student.initialParentPassword = "Par@" + (100000 + new java.util.Random().nextInt(900000));
+
+    Student saved = students.save(student);
+
+    // Create student UserAccount
+    UserAccount studentUser = new UserAccount();
+    studentUser.email = saved.initialStudentUsername;
+    studentUser.fullName = saved.studentName;
+    studentUser.passwordHash = passwordEncoder.encode(saved.initialStudentPassword);
+    studentUser.role = Role.STUDENT;
+    studentUser.linkedStudentId = saved.id;
+    users.save(studentUser);
+
+    // Create parent UserAccount (if parent contact exists)
+    if (saved.parent != null) {
+      UserAccount parentUser = new UserAccount();
+      parentUser.email = saved.initialParentUsername;
+      parentUser.fullName = saved.parent.name;
+      parentUser.passwordHash = passwordEncoder.encode(saved.initialParentPassword);
+      parentUser.role = Role.PARENT;
+      parentUser.linkedParentId = saved.parent.id;
+      users.save(parentUser);
+    }
+
+    audit.record("CREATE", "Student", saved.id, saved.studentName);
+    return saved;
+  }
   @GetMapping("/students/{id}") public Student student(@PathVariable Long id) { return students.findById(id).orElseThrow(); }
   @PutMapping("/students/{id}") public Student updateStudent(@PathVariable Long id, @RequestBody Student input) { input.id = id; Student saved = students.save(input); audit.record("UPDATE", "Student", id, input.studentName); return saved; }
   @DeleteMapping("/students/{id}") public void deleteStudent(@PathVariable Long id) { students.deleteById(id); audit.record("DELETE", "Student", id, "Deleted student"); }

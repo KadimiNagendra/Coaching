@@ -9,6 +9,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import com.tuitionmanager.web.PortalController.ResetCredentialsRequest;
 
 @Service
 public class PortalService {
@@ -20,8 +22,9 @@ public class PortalService {
   private final ExamResultRepository examResults;
   private final HomeworkRepository homework;
   private final NotificationLogRepository notifications;
+  private final PasswordEncoder passwordEncoder;
 
-  public PortalService(UserAccountRepository users, StudentRepository students, FeePaymentRepository fees, AttendanceRecordRepository attendance, ExamRepository exams, ExamResultRepository examResults, HomeworkRepository homework, NotificationLogRepository notifications) {
+  public PortalService(UserAccountRepository users, StudentRepository students, FeePaymentRepository fees, AttendanceRecordRepository attendance, ExamRepository exams, ExamResultRepository examResults, HomeworkRepository homework, NotificationLogRepository notifications, PasswordEncoder passwordEncoder) {
     this.users = users;
     this.students = students;
     this.fees = fees;
@@ -30,6 +33,7 @@ public class PortalService {
     this.examResults = examResults;
     this.homework = homework;
     this.notifications = notifications;
+    this.passwordEncoder = passwordEncoder;
   }
 
   public Map<String, Object> overview() {
@@ -41,6 +45,18 @@ public class PortalService {
       "email", user.email,
       "students", linkedStudents
     );
+  }
+
+  public void resetCredentials(ResetCredentialsRequest request) {
+    UserAccount user = currentUser();
+    users.findByEmail(request.newUsername()).ifPresent(existing -> {
+      if (!existing.id.equals(user.id)) {
+        throw new ResponseStatusException(HttpStatus.CONFLICT, "Username (email) is already in use");
+      }
+    });
+    user.email = request.newUsername();
+    user.passwordHash = passwordEncoder.encode(request.newPassword());
+    users.save(user);
   }
 
   public List<FeePayment> fees() {

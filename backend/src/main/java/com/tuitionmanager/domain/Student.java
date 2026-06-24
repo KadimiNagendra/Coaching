@@ -28,6 +28,11 @@ public class Student {
   @ManyToOne(cascade = CascadeType.ALL)
   public ParentContact parent;
 
+  public String initialStudentUsername;
+  public String initialStudentPassword;
+  public String initialParentUsername;
+  public String initialParentPassword;
+
   @ManyToOne
   public Batch batch;
 

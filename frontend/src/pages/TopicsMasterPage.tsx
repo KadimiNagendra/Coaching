@@ -117,7 +117,7 @@ export default function TopicsMasterPage() {
   // Filtered plans logic
   const filteredPlans = useMemo(() => {
     return plans.filter(p => {
-      const matchSearch = searchQuery.trim() === '' || 
+      const matchSearch = searchQuery.trim() === '' ||
         p.chapter.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.topic.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.subject.toLowerCase().includes(searchQuery.toLowerCase());
@@ -151,7 +151,7 @@ export default function TopicsMasterPage() {
       {/* Filter controls */}
       <Card sx={{ mb: 3 }}>
         <CardContent sx={{ pb: '16px !important' }}>
-          <Stack sx={{ flexDirection: { xs: 'column', md: 'row' }, alignItems: 'center' }} spacing={2}>
+          <Stack sx={{ flexDirection: { xs: 'column', md: 'row' }, alignItems: { xs: 'stretch', md: 'flex-end' } }} spacing={2}>
             <TextField
               placeholder="Search topic or chapter..."
               size="small"
@@ -257,7 +257,7 @@ export default function TopicsMasterPage() {
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
             Historical teaching records planned in the past.
           </Typography>
-          
+
           {/* Filter controls */}
           <Stack sx={{ flexDirection: { xs: 'column', md: 'row' }, alignItems: 'center', mb: 3 }} spacing={2}>
             <TextField

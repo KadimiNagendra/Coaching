@@ -18,7 +18,8 @@ import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import ListAltIcon from '@mui/icons-material/ListAlt';
 import ExpandLess from '@mui/icons-material/ExpandLess';
 import ExpandMore from '@mui/icons-material/ExpandMore';
-import { AppBar, Avatar, Box, CssBaseline, Divider, Drawer, IconButton, List, ListItemButton, ListItemIcon, ListItemText, Toolbar, Typography, Button, Collapse } from '@mui/material';
+import HomeIcon from '@mui/icons-material/Home';
+import { AppBar, Avatar, Box, CssBaseline, Divider, Drawer, IconButton, List, ListItemButton, ListItemIcon, ListItemText, Toolbar, Typography, Button, Collapse, Tooltip } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import { setToken, getUser } from '../api/client';
 
@@ -61,7 +62,7 @@ export function AppShell({ children }: PropsWithChildren) {
 
   const drawer = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <Toolbar sx={{ px: 2.5, py: 2.5, minHeight: 88 }}>
+      <Toolbar sx={{ px: 2.5, py: 2.5, minHeight: 88, display: 'flex', alignItems: 'center' }}>
         <Avatar
           sx={{
             width: 42,
@@ -75,7 +76,7 @@ export function AppShell({ children }: PropsWithChildren) {
         >
           <SchoolIcon fontSize="small" />
         </Avatar>
-        <Box>
+        <Box sx={{ flexGrow: 1 }}>
           <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2, color: '#f8fafc' }}>
             Clarity
           </Typography>
@@ -83,6 +84,24 @@ export function AppShell({ children }: PropsWithChildren) {
             {portalLabel}
           </Typography>
         </Box>
+        <Tooltip title="Clarity Home (Personal Finance)">
+          <IconButton
+            component={Link}
+            to="/clarity-home"
+            sx={{
+              color: '#c7d2fe',
+              bgcolor: alpha('#818cf8', 0.1),
+              '&:hover': {
+                bgcolor: alpha('#818cf8', 0.2)
+              },
+              p: 1,
+              border: '1px solid',
+              borderColor: alpha('#818cf8', 0.2)
+            }}
+          >
+            <HomeIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
       </Toolbar>
       <Divider sx={{ borderColor: alpha('#ffffff', 0.08), mx: 2 }} />
       <List sx={{ px: 1.5, py: 2, flexGrow: 1 }}>
@@ -180,6 +199,7 @@ export function AppShell({ children }: PropsWithChildren) {
               {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
             </Typography>
           </Box>
+
         </Toolbar>
       </AppBar>
       <Box component="nav" sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}>

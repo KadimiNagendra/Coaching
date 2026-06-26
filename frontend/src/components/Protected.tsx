@@ -5,10 +5,10 @@ import { AppShell } from './AppShell';
 
 type Role = 'TEACHER' | 'PARENT' | 'STUDENT';
 
-export function Protected({ children, allow }: { children: ReactElement; allow: Role[] }) {
+export function Protected({ children, allow, noShell }: { children: ReactElement; allow: Role[]; noShell?: boolean }) {
   if (!getToken()) return <Navigate to="/login" replace />;
   const user = getUser();
   if (!user) return <Navigate to="/login" replace />;
   if (!allow.includes(user.role)) return <Navigate to={homePath(user.role)} replace />;
-  return <AppShell>{children}</AppShell>;
+  return noShell ? children : <AppShell>{children}</AppShell>;
 }

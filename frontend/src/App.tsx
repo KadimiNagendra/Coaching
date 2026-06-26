@@ -14,6 +14,7 @@ import ReportsPage from './pages/ReportsPage';
 import NotificationsPage from './pages/NotificationsPage';
 import PortalPage from './pages/PortalPage';
 import TopicsMasterPage from './pages/TopicsMasterPage';
+import ClarityHomePage from './pages/ClarityHomePage';
 
 function RootRedirect() {
   const user = getUser();
@@ -38,6 +39,7 @@ export default function App() {
       <Route path="/reports" element={<Protected allow={['TEACHER']}><ReportsPage /></Protected>} />
       <Route path="/notifications" element={<Protected allow={['TEACHER']}><NotificationsPage /></Protected>} />
       <Route path="/topics-master" element={<Protected allow={['TEACHER']}><TopicsMasterPage /></Protected>} />
+      <Route path="/clarity-home" element={<Protected allow={['TEACHER', 'PARENT', 'STUDENT']} noShell><ClarityHomePage /></Protected>} />
     </Routes>
   );
 }

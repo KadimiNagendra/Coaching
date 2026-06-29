@@ -30,16 +30,19 @@ public class SecurityConfig {
   @Bean
   SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
     return http
-      .csrf(csrf -> csrf.disable())
-      .cors(cors -> {})
-      .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-      .authorizeHttpRequests(auth -> auth
-        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-        .requestMatchers("/api/v1/auth/login", "/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
-        .requestMatchers("/api/v1/auth/me", "/api/v1/portal/**", "/api/v1/clarity-home").hasAnyRole("TEACHER", "PARENT", "STUDENT")
-        .anyRequest().hasRole("TEACHER"))
-      .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
-      .build();
+        .csrf(csrf -> csrf.disable())
+        .cors(cors -> {
+        })
+        .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+        .authorizeHttpRequests(auth -> auth
+            .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+            .requestMatchers("/error").permitAll()
+            .requestMatchers("/api/v1/auth/login", "/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+            .requestMatchers("/api/v1/auth/me", "/api/v1/auth/reset-credentials", "/api/v1/portal/**", "/api/v1/clarity-home")
+            .hasAnyRole("TEACHER", "PARENT", "STUDENT", "FAMILY_MEMBER")
+            .anyRequest().hasRole("TEACHER"))
+        .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+        .build();
   }
 
   @Bean

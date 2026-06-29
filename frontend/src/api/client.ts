@@ -1,6 +1,6 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
 
-export type User = { email: string; fullName: string; role: 'TEACHER' | 'PARENT' | 'STUDENT'; linkedStudentId?: number | string; linkedParentId?: number | string };
+export type User = { email: string; fullName: string; role: 'TEACHER' | 'PARENT' | 'STUDENT' | 'FAMILY_MEMBER'; linkedStudentId?: number | string; linkedParentId?: number | string };
 export type PortalOverview = { role: string; fullName: string; email: string; students: Student[] };
 export type DashboardSummary = {
   totalStudents: number;
@@ -104,6 +104,7 @@ export function setUser(user: User | null) {
 }
 
 export function homePath(role?: string) {
+  if (role === 'FAMILY_MEMBER') return '/clarity-home';
   return role === 'PARENT' || role === 'STUDENT' ? '/portal' : '/dashboard';
 }
 
@@ -123,7 +124,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
-  login: (email: string, password: string) => request<{ token: string; user: User }>('/api/v1/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  login: (username: string, password: string) => request<{ token: string; user: User }>('/api/v1/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
   me: () => request<User>('/api/v1/auth/me'),
   portalOverview: () => request<PortalOverview>('/api/v1/portal/overview'),
   portalFees: () => request<FeePayment[]>('/api/v1/portal/fees'),
@@ -132,7 +133,7 @@ export const api = {
   portalResults: () => request<ExamResult[]>('/api/v1/portal/results'),
   portalHomework: () => request<Homework[]>('/api/v1/portal/homework'),
   portalNotifications: () => request<NotificationLog[]>('/api/v1/portal/notifications'),
-  resetCredentials: (newUsername: string, newPassword: string) => request<void>('/api/v1/portal/reset-credentials', { method: 'POST', body: JSON.stringify({ newUsername, newPassword }) }),
+  resetCredentials: (newUsername: string, newPassword: string) => request<void>('/api/v1/auth/reset-credentials', { method: 'POST', body: JSON.stringify({ newUsername, newPassword }) }),
   dashboard: () => request<DashboardSummary>('/api/v1/dashboard/summary'),
   students: () => request<Student[]>('/api/v1/students'),
   createStudent: (student: Student) => request<Student>('/api/v1/students', { method: 'POST', body: JSON.stringify(student) }),
@@ -176,7 +177,7 @@ export const api = {
   notifications: () => request<NotificationLog[]>('/api/v1/notifications'),
   createNotification: (notification: NotificationLog) => request<NotificationLog>('/api/v1/notifications', { method: 'POST', body: JSON.stringify(notification) }),
   getClarityHomeData: () => request<Record<string, any>>('/api/v1/clarity-home'),
-  saveClarityHomeData: (data: Record<string, any>) => request<void>('/api/v1/clarity-home', { method: 'POST', body: JSON.stringify(data) }),
+  saveClarityHomeData: (data: Record<string, any>) => request<Record<string, any>>('/api/v1/clarity-home', { method: 'POST', body: JSON.stringify(data) }),
   downloadReport: async (type: string, format: 'xlsx' | 'csv') => {
     const token = getToken();
     const response = await fetch(`${API_BASE_URL}/api/v1/reports/${type}.${format}`, {

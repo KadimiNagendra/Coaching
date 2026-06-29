@@ -5,6 +5,7 @@ import com.tuitionmanager.repository.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -13,20 +14,45 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 @Configuration
 public class SeedData {
   @Bean
-  CommandLineRunner seed(UserAccountRepository users, BatchRepository batches, StudentRepository students, FeePaymentRepository fees, AttendanceRecordRepository attendance, ExamRepository exams, ExamResultRepository results, HomeworkRepository homework, ExpenseRepository expenses, IncomeEntryRepository income, NotificationLogRepository notifications, TopicPlanRepository topicPlans, PasswordEncoder encoder) {
+  CommandLineRunner seed(
+      UserAccountRepository users,
+      BatchRepository batches,
+      StudentRepository students,
+      FeePaymentRepository fees,
+      AttendanceRecordRepository attendance,
+      ExamRepository exams,
+      ExamResultRepository results,
+      HomeworkRepository homework,
+      ExpenseRepository expenses,
+      IncomeEntryRepository income,
+      NotificationLogRepository notifications,
+      TopicPlanRepository topicPlans,
+      PasswordEncoder encoder,
+      @Value("${app.bootstrap-admin.enabled:true}") boolean bootstrapAdmin,
+      @Value("${app.bootstrap-admin.username:admin}") String adminUsername,
+      @Value("${app.bootstrap-admin.password:Admin@123}") String adminPassword,
+      @Value("${app.bootstrap-admin.full-name:Admin}") String adminFullName,
+      @Value("${app.seed-demo-data:false}") boolean seedDemoData
+  ) {
     return args -> {
-      if (users.count() == 0) {
-        UserAccount teacher = new UserAccount();
-        teacher.email = "teacher@example.com";
-        teacher.fullName = "Tuition Teacher";
-        teacher.passwordHash = encoder.encode("Admin@123");
-        teacher.role = Role.TEACHER;
-        users.save(teacher);
+      if (users.count() == 0 && bootstrapAdmin) {
+        UserAccount admin = new UserAccount();
+        admin.email = adminUsername;
+        admin.fullName = adminFullName;
+        admin.passwordHash = encoder.encode(adminPassword);
+        admin.role = Role.TEACHER;
+        users.save(admin);
       }
 
       if (students.count() > 0) {
         ensurePortalUsers(users, students, encoder);
-        seedTopicPlans(batches, topicPlans);
+        if (seedDemoData) {
+          seedTopicPlans(batches, topicPlans);
+        }
+        return;
+      }
+
+      if (!seedDemoData) {
         return;
       }
 
@@ -91,14 +117,6 @@ public class SeedData {
         student.initialStudentPassword = "Stu@" + (100000 + new java.util.Random().nextInt(900000));
         student.initialParentUsername = "parent_" + studentIdClean + "@tuition.com";
         student.initialParentPassword = "Par@" + (100000 + new java.util.Random().nextInt(900000));
-        updated = true;
-      }
-      
-      if ("STU-1001".equals(student.studentId)) {
-        student.initialStudentUsername = "student@example.com";
-        student.initialStudentPassword = "Student@123";
-        student.initialParentUsername = "parent@example.com";
-        student.initialParentPassword = "Parent@123";
         updated = true;
       }
 

@@ -126,6 +126,8 @@ export interface FamilyMember {
   name: string;
   relationship: string;
   avatarColor: string;
+  username?: string;
+  password?: string;
 }
 
 export interface PaymentMethod {
@@ -265,15 +267,6 @@ const SEED_DATA = {
 export const clarityHomeDb = {
   // Initialize Database
   init: () => {
-    Object.entries(STORAGE_KEYS).forEach(([key, storageKey]) => {
-      if (!localStorage.getItem(storageKey)) {
-        const seedValue = SEED_DATA[key.toLowerCase() as keyof typeof SEED_DATA];
-        if (seedValue) {
-          localStorage.setItem(storageKey, JSON.stringify(seedValue));
-        }
-      }
-    });
-
     if (!localStorage.getItem(STORAGE_KEYS.LAST_SCHEDULER_RUN)) {
       localStorage.setItem(STORAGE_KEYS.LAST_SCHEDULER_RUN, new Date().toISOString().slice(0, 10));
     }

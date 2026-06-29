@@ -109,6 +109,7 @@ export default function ClarityHomePage() {
   const [debtModalOpen, setDebtModalOpen] = useState(false);
   const [balanceModalOpen, setBalanceModalOpen] = useState(false);
   const [wishlistModalOpen, setWishlistModalOpen] = useState(false);
+  const [selectedMemberCreds, setSelectedMemberCreds] = useState<any>(null);
 
   // Forms states
   const [incomeForm, setIncomeForm] = useState<Omit<Income, 'id'>>({
@@ -180,38 +181,42 @@ export default function ClarityHomePage() {
 
   const [dbLoading, setDbLoading] = useState(true);
 
-  const syncToServer = () => {
-    const STORAGE_KEYS = {
-      INCOME: 'ch_income',
-      EXPENSES: 'ch_expenses',
-      BUDGETS: 'ch_budgets',
-      BILLS: 'ch_bills',
-      SAVINGS_GOALS: 'ch_savings_goals',
-      LOANS: 'ch_loans',
-      INVESTMENTS: 'ch_investments',
-      ASSETS: 'ch_assets',
-      DEBTS: 'ch_debts',
-      WISHLIST: 'ch_wishlist',
-      NOTIFICATIONS: 'ch_notifications',
-      FAMILY_MEMBERS: 'ch_family_members',
-      PAYMENT_METHODS: 'ch_payment_methods',
-      SETTINGS: 'ch_settings',
-      ACTIVITY_LOGS: 'ch_activity_logs'
-    };
-    const dump: Record<string, any> = {};
-    Object.values(STORAGE_KEYS).forEach(key => {
-      const val = localStorage.getItem(key);
-      if (val) {
-        try {
-          dump[key] = JSON.parse(val);
-        } catch (e) {
-          dump[key] = val;
+  // In-memory reference to the full payload – source of truth for server syncs
+  const dbRef = useRef<Record<string, any>>({});
+
+  /** Populate React state from the given server payload */
+  const applyPayload = (data: Record<string, any>) => {
+    dbRef.current = data;
+    setIncome((data['ch_income'] ?? []) as Income[]);
+    setExpenses((data['ch_expenses'] ?? []) as Expense[]);
+    setBudgets((data['ch_budgets'] ?? []) as Budget[]);
+    setBills((data['ch_bills'] ?? []) as Bill[]);
+    setGoals((data['ch_savings_goals'] ?? []) as SavingsGoal[]);
+    setLoans((data['ch_loans'] ?? []) as Loan[]);
+    setInvestments((data['ch_investments'] ?? []) as Investment[]);
+    setAssets((data['ch_assets'] ?? []) as Asset[]);
+    setDebts((data['ch_debts'] ?? []) as Debt[]);
+    setWishlist((data['ch_wishlist'] ?? []) as WishlistItem[]);
+    setNotifications((data['ch_notifications'] ?? []) as Notification[]);
+    setFamilyMembers((data['ch_family_members'] ?? []) as FamilyMember[]);
+    setPaymentMethods((data['ch_payment_methods'] ?? []) as PaymentMethod[]);
+    setSettings((data['ch_settings'] ?? null) as ClarityHomeSettings | null);
+    setActivityLogs((data['ch_activity_logs'] ?? []) as ActivityLog[]);
+  };
+
+  /** Persist the full in-memory payload to the server and re-apply from response */
+  const saveToServer = (patch: Record<string, any>): Promise<void> => {
+    const payload = { ...dbRef.current, ...patch };
+    dbRef.current = payload;
+    return api.saveClarityHomeData(payload)
+      .then((updatedData) => {
+        if (updatedData && Object.keys(updatedData).length > 0) {
+          applyPayload(updatedData);
         }
-      }
-    });
-    api.saveClarityHomeData(dump).catch(err => {
-      console.error("Failed to sync Clarity Home data to server", err);
-    });
+      })
+      .catch(err => {
+        console.error('Failed to save Clarity Home data to server', err);
+      });
   };
 
   const handleResetCredentials = () => {
@@ -229,52 +234,30 @@ export default function ClarityHomePage() {
         }, 2000);
       })
       .catch((err) => {
-        console.error("Failed to reset credentials", err);
-        triggerToast(err.message || 'Failed to update credentials. Please check format.', 'error');
+        console.error('Failed to reset credentials', err);
+        let message = 'Failed to update credentials.';
+        if (err.message) {
+          try {
+            const parsed = JSON.parse(err.message);
+            message = parsed.message || parsed.error || message;
+          } catch {
+            message = err.message;
+          }
+        }
+        triggerToast(message, 'error');
       });
   };
 
-  // Load database
-  const refreshDb = () => {
-    clarityHomeDb.init();
-    setIncome(clarityHomeDb.getIncome());
-    setExpenses(clarityHomeDb.getExpenses());
-    setBudgets(clarityHomeDb.getBudgets());
-    setBills(clarityHomeDb.getBills());
-    setGoals(clarityHomeDb.getSavingsGoals());
-    setLoans(clarityHomeDb.getLoans());
-    setInvestments(clarityHomeDb.getInvestments());
-    setAssets(clarityHomeDb.getAssets());
-    setDebts(clarityHomeDb.getDebts());
-    setWishlist(clarityHomeDb.getWishlist());
-    setNotifications(clarityHomeDb.getNotifications());
-    setFamilyMembers(clarityHomeDb.getFamilyMembers());
-    setPaymentMethods(clarityHomeDb.getPaymentMethods());
-    setSettings(clarityHomeDb.getSettings());
-    setActivityLogs(clarityHomeDb.getActivityLogs());
-
-    if (mounted) {
-      syncToServer();
-    }
-  };
-
   useEffect(() => {
+    clarityHomeDb.init(); // only runs the recurring scheduler, no seeding
     api.getClarityHomeData()
       .then((data) => {
-        if (data && Object.keys(data).length > 0) {
-          Object.keys(data).forEach(key => {
-            if (data[key] !== null && data[key] !== undefined) {
-              localStorage.setItem(key, typeof data[key] === 'string' ? data[key] : JSON.stringify(data[key]));
-            }
-          });
-        }
-        refreshDb();
+        applyPayload(data && Object.keys(data).length > 0 ? data : {});
         setMounted(true);
         setDbLoading(false);
       })
       .catch((err) => {
-        console.error("Failed to fetch Clarity Home data from server, using local store", err);
-        refreshDb();
+        console.error('Failed to fetch Clarity Home data from server', err);
         setMounted(true);
         setDbLoading(false);
       });
@@ -427,143 +410,220 @@ export default function ClarityHomePage() {
   // Operations
   const handleAddIncome = (e: React.FormEvent) => {
     e.preventDefault();
+    let updatedList: Income[];
     if (selectedIncome) {
-      clarityHomeDb.updateIncome(selectedIncome.id, incomeForm);
+      updatedList = income.map(x => x.id === selectedIncome.id ? { ...x, ...incomeForm } : x);
       triggerToast('Income updated successfully.');
     } else {
-      clarityHomeDb.addIncome(incomeForm);
+      const newItem: Income = { ...incomeForm, id: `inc-${Date.now()}` };
+      updatedList = [...income, newItem];
       triggerToast('Income logged successfully.');
     }
+    setIncome(updatedList);
     setIncomeModalOpen(false);
     setSelectedIncome(null);
     setIncomeForm({
       title: '', category: 'Salary', amount: 0, date: new Date().toISOString().slice(0, 10),
       paymentMethod: 'Bank Transfer', notes: '', recurring: 'none'
     });
-    refreshDb();
+    const newLog: ActivityLog = { id: `log-${Date.now()}`, action: selectedIncome ? 'Update Income' : 'Add Income', timestamp: new Date().toISOString(), details: `Income "${incomeForm.title}" of amount ${incomeForm.amount}` };
+    const updatedLogs = [newLog, ...activityLogs].slice(0, 100);
+    setActivityLogs(updatedLogs);
+    saveToServer({ ch_income: updatedList, ch_activity_logs: updatedLogs });
   };
 
   const handleAddExpense = (e: React.FormEvent) => {
     e.preventDefault();
+    let updatedList: Expense[];
+    let updatedNotifs = [...notifications];
     if (selectedExpense) {
-      clarityHomeDb.updateExpense(selectedExpense.id, expenseForm);
+      updatedList = expenses.map(x => x.id === selectedExpense.id ? { ...x, ...expenseForm } : x);
       triggerToast('Expense updated successfully.');
     } else {
-      clarityHomeDb.addExpense(expenseForm);
+      const newItem: Expense = { ...expenseForm, id: `exp-${Date.now()}` };
+      updatedList = [...expenses, newItem];
       triggerToast('Expense logged successfully.');
+      // Budget alert check
+      const year = new Date(expenseForm.date).getFullYear();
+      const month = new Date(expenseForm.date).getMonth() + 1;
+      const budget = budgets.find(b => b.category === expenseForm.category && b.year === year && b.month === month);
+      if (budget) {
+        const currentSpent = updatedList.filter(e => e.category === expenseForm.category && new Date(e.date).getFullYear() === year && (new Date(e.date).getMonth() + 1) === month).reduce((sum, e) => sum + e.amount, 0);
+        if (currentSpent > budget.amount) {
+          updatedNotifs = [{ id: `not-${Date.now()}`, title: 'Budget Overrun Alert!', message: `Category "${expenseForm.category}" monthly budget of ${budget.amount} has been exceeded (Current spent: ${currentSpent}).`, date: new Date().toISOString(), type: 'budget', read: false }, ...updatedNotifs];
+          setNotifications(updatedNotifs);
+        } else if (currentSpent > budget.amount * 0.8) {
+          updatedNotifs = [{ id: `not-${Date.now()}`, title: 'Budget limit nearing', message: `You have spent 80%+ of category "${expenseForm.category}" monthly budget (${currentSpent} of ${budget.amount}).`, date: new Date().toISOString(), type: 'budget', read: false }, ...updatedNotifs];
+          setNotifications(updatedNotifs);
+        }
+      }
     }
+    setExpenses(updatedList);
     setExpenseModalOpen(false);
     setSelectedExpense(null);
     setExpenseForm({
       expenseName: '', category: 'Food', amount: 0, date: new Date().toISOString().slice(0, 10),
       paymentMethod: 'UPI', vendor: '', notes: '', tags: [], recurring: 'none', familyMember: 'Self', isBusiness: false
     });
-    refreshDb();
+    const newLog: ActivityLog = { id: `log-${Date.now()}`, action: selectedExpense ? 'Update Expense' : 'Add Expense', timestamp: new Date().toISOString(), details: `Expense "${expenseForm.expenseName}" of amount ${expenseForm.amount}` };
+    const updatedLogs = [newLog, ...activityLogs].slice(0, 100);
+    setActivityLogs(updatedLogs);
+    saveToServer({ ch_expenses: updatedList, ch_notifications: updatedNotifs, ch_activity_logs: updatedLogs });
   };
 
   const handleAddBudget = (e: React.FormEvent) => {
     e.preventDefault();
-    clarityHomeDb.addBudget(budgetForm);
+    const newItem: Budget = { ...budgetForm, id: `bud-${Date.now()}` };
+    const updatedList = [...budgets, newItem];
+    setBudgets(updatedList);
     triggerToast('Monthly Category Budget configured.');
     setBudgetModalOpen(false);
     setBudgetForm({ category: 'Food', amount: 0, period: 'monthly', year: 2026, month: 6 });
-    refreshDb();
+    const newLog: ActivityLog = { id: `log-${Date.now()}`, action: 'Add Budget', timestamp: new Date().toISOString(), details: `Budget for "${budgetForm.category}" of amount ${budgetForm.amount}` };
+    const updatedLogs = [newLog, ...activityLogs].slice(0, 100);
+    setActivityLogs(updatedLogs);
+    saveToServer({ ch_budgets: updatedList, ch_activity_logs: updatedLogs });
   };
 
   const handleAddBill = (e: React.FormEvent) => {
     e.preventDefault();
-    clarityHomeDb.addBill(billForm);
+    const newItem: Bill = { ...billForm, id: `bil-${Date.now()}` };
+    const updatedList = [...bills, newItem];
+    setBills(updatedList);
     triggerToast('Bill payment reminders active.');
     setBillModalOpen(false);
     setBillForm({
       title: '', category: 'Electricity', amount: 0, dueDate: new Date().toISOString().slice(0, 10),
       status: 'Unpaid', reminderDays: 5, autoRecurring: true
     });
-    refreshDb();
+    const newLog: ActivityLog = { id: `log-${Date.now()}`, action: 'Add Bill', timestamp: new Date().toISOString(), details: `Bill "${billForm.title}" of amount ${billForm.amount}` };
+    const updatedLogs = [newLog, ...activityLogs].slice(0, 100);
+    setActivityLogs(updatedLogs);
+    saveToServer({ ch_bills: updatedList, ch_activity_logs: updatedLogs });
   };
 
   const handleAddGoal = (e: React.FormEvent) => {
     e.preventDefault();
-    clarityHomeDb.addSavingsGoal(goalForm);
+    const newItem: SavingsGoal = { ...goalForm, id: `goal-${Date.now()}` };
+    const updatedList = [...goals, newItem];
+    setGoals(updatedList);
     triggerToast('Savings goal configured.');
     setGoalModalOpen(false);
     setGoalForm({
       goalName: '', targetAmount: 0, currentAmount: 0, category: 'Emergency Fund', targetDate: new Date().toISOString().slice(0, 10)
     });
-    refreshDb();
+    const newLog: ActivityLog = { id: `log-${Date.now()}`, action: 'Add Savings Goal', timestamp: new Date().toISOString(), details: `Goal "${goalForm.goalName}" target ${goalForm.targetAmount}` };
+    const updatedLogs = [newLog, ...activityLogs].slice(0, 100);
+    setActivityLogs(updatedLogs);
+    saveToServer({ ch_savings_goals: updatedList, ch_activity_logs: updatedLogs });
   };
 
   const handleAddLoan = (e: React.FormEvent) => {
     e.preventDefault();
-    clarityHomeDb.addLoan(loanForm);
+    const newItem: Loan = { ...loanForm, id: `loan-${Date.now()}` };
+    const updatedList = [...loans, newItem];
+    setLoans(updatedList);
     triggerToast('Loan tracker initialized.');
     setLoanModalOpen(false);
     setLoanForm({
       loanName: '', loanType: 'Personal Loan', loanAmount: 0, interestRate: 8, emiAmount: 0,
       dueDate: new Date().toISOString().slice(0, 10), remainingBalance: 0, paymentHistory: []
     });
-    refreshDb();
+    const newLog: ActivityLog = { id: `log-${Date.now()}`, action: 'Add Loan', timestamp: new Date().toISOString(), details: `Loan "${loanForm.loanName}"` };
+    const updatedLogs = [newLog, ...activityLogs].slice(0, 100);
+    setActivityLogs(updatedLogs);
+    saveToServer({ ch_loans: updatedList, ch_activity_logs: updatedLogs });
   };
 
   const handleAddInvestment = (e: React.FormEvent) => {
     e.preventDefault();
-    clarityHomeDb.addInvestment(investmentForm);
+    const newItem: Investment = { ...investmentForm, id: `inv-${Date.now()}` };
+    const updatedList = [...investments, newItem];
+    setInvestments(updatedList);
     triggerToast('Investment logged to asset tracking.');
     setInvestmentModalOpen(false);
     setInvestmentForm({
       name: '', type: 'Mutual Funds', investedAmount: 0, currentValue: 0, purchaseDate: new Date().toISOString().slice(0, 10)
     });
-    refreshDb();
+    const newLog: ActivityLog = { id: `log-${Date.now()}`, action: 'Add Investment', timestamp: new Date().toISOString(), details: `Investment "${investmentForm.name}"` };
+    const updatedLogs = [newLog, ...activityLogs].slice(0, 100);
+    setActivityLogs(updatedLogs);
+    saveToServer({ ch_investments: updatedList, ch_activity_logs: updatedLogs });
   };
 
   const handleAddAsset = (e: React.FormEvent) => {
     e.preventDefault();
-    clarityHomeDb.addAsset(assetForm);
+    const newItem: Asset = { ...assetForm, id: `ast-${Date.now()}` };
+    const updatedList = [...assets, newItem];
+    setAssets(updatedList);
     triggerToast('Valuable asset registered.');
     setAssetModalOpen(false);
     setAssetForm({ name: '', assetType: 'Bank Accounts', estimatedValue: 0 });
-    refreshDb();
+    const newLog: ActivityLog = { id: `log-${Date.now()}`, action: 'Add Asset', timestamp: new Date().toISOString(), details: `Asset "${assetForm.name}"` };
+    const updatedLogs = [newLog, ...activityLogs].slice(0, 100);
+    setActivityLogs(updatedLogs);
+    saveToServer({ ch_assets: updatedList, ch_activity_logs: updatedLogs });
   };
 
   const handleAddDebt = (e: React.FormEvent) => {
     e.preventDefault();
-    clarityHomeDb.addDebt(debtForm);
+    const newItem: Debt = { ...debtForm, id: `deb-${Date.now()}` };
+    const updatedList = [...debts, newItem];
+    setDebts(updatedList);
     triggerToast('Debt record updated.');
     setDebtModalOpen(false);
     setDebtForm({
       personName: '', type: 'borrowed', amount: 0, dueDate: new Date().toISOString().slice(0, 10),
       interestRate: 0, paidStatus: 'Unpaid'
     });
-    refreshDb();
+    const newLog: ActivityLog = { id: `log-${Date.now()}`, action: 'Add Debt', timestamp: new Date().toISOString(), details: `Debt with ${debtForm.personName}` };
+    const updatedLogs = [newLog, ...activityLogs].slice(0, 100);
+    setActivityLogs(updatedLogs);
+    saveToServer({ ch_debts: updatedList, ch_activity_logs: updatedLogs });
   };
 
   const handleAddWishlist = (e: React.FormEvent) => {
     e.preventDefault();
-    clarityHomeDb.addWishlistItem(wishlistForm);
+    const newItem: WishlistItem = { ...wishlistForm, id: `wish-${Date.now()}` };
+    const updatedList = [...wishlist, newItem];
+    setWishlist(updatedList);
     triggerToast('Wishlist item created.');
     setWishlistModalOpen(false);
     setWishlistForm({
       itemName: '', estimatedPrice: 0, priority: 'Medium', targetDate: new Date().toISOString().slice(0, 10), notes: ''
     });
-    refreshDb();
+    const newLog: ActivityLog = { id: `log-${Date.now()}`, action: 'Add Wishlist Item', timestamp: new Date().toISOString(), details: `"${wishlistForm.itemName}"` };
+    const updatedLogs = [newLog, ...activityLogs].slice(0, 100);
+    setActivityLogs(updatedLogs);
+    saveToServer({ ch_wishlist: updatedList, ch_activity_logs: updatedLogs });
   };
 
   const handleAddFamilyMember = (e: React.FormEvent) => {
     e.preventDefault();
     if (!familyMemberForm.name.trim()) return;
-    clarityHomeDb.addFamilyMember(familyMemberForm);
+    const newItem: FamilyMember = { ...familyMemberForm, id: `fam-${Date.now()}` };
+    const updatedList = [...familyMembers, newItem];
+    setFamilyMembers(updatedList);
     triggerToast('Family member registered.');
     setFamilyMemberForm({ name: '', relationship: '', avatarColor: '#3f51b5' });
-    refreshDb();
+    const newLog: ActivityLog = { id: `log-${Date.now()}`, action: 'Add Family Member', timestamp: new Date().toISOString(), details: `Added family member "${familyMemberForm.name}"` };
+    const updatedLogs = [newLog, ...activityLogs].slice(0, 100);
+    setActivityLogs(updatedLogs);
+    saveToServer({ ch_family_members: updatedList, ch_activity_logs: updatedLogs });
   };
 
   const handleAddPaymentMethod = (e: React.FormEvent) => {
     e.preventDefault();
     if (!paymentMethodForm.name.trim()) return;
-    clarityHomeDb.addPaymentMethod(paymentMethodForm);
+    const newItem: PaymentMethod = { ...paymentMethodForm, id: `pm-${Date.now()}` };
+    const updatedList = [...paymentMethods, newItem];
+    setPaymentMethods(updatedList);
     triggerToast('Payment channel mapped.');
     setPaymentMethodForm({ name: '', type: 'UPI' });
-    refreshDb();
+    const newLog: ActivityLog = { id: `log-${Date.now()}`, action: 'Add Payment Method', timestamp: new Date().toISOString(), details: `Payment method "${paymentMethodForm.name}"` };
+    const updatedLogs = [newLog, ...activityLogs].slice(0, 100);
+    setActivityLogs(updatedLogs);
+    saveToServer({ ch_payment_methods: updatedList, ch_activity_logs: updatedLogs });
   };
 
 
@@ -663,7 +723,7 @@ export default function ClarityHomePage() {
 
   // Backup file logic
   const handleBackupDownload = () => {
-    const backupStr = clarityHomeDb.exportBackup();
+    const backupStr = JSON.stringify(dbRef.current, null, 2);
     const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(backupStr);
     const downloadAnchor = document.createElement('a');
     downloadAnchor.setAttribute('href', dataStr);
@@ -682,11 +742,12 @@ export default function ClarityHomePage() {
       fileReader.onload = (e) => {
         const content = e.target?.result;
         if (typeof content === 'string') {
-          const success = clarityHomeDb.importBackup(content);
-          if (success) {
+          try {
+            const parsed = JSON.parse(content);
+            applyPayload(parsed);
+            saveToServer(parsed);
             triggerToast('Database backup successfully imported!');
-            refreshDb();
-          } else {
+          } catch {
             triggerToast('Invalid backup file structure.', 'error');
           }
         }
@@ -750,7 +811,11 @@ export default function ClarityHomePage() {
                   sx={{ py: 0.5, px: 1.5, fontSize: '0.825rem' }}
                   action={
                     !n.read && (
-                      <IconButton size="small" onClick={() => { clarityHomeDb.markNotificationRead(n.id); refreshDb(); }}>
+                      <IconButton size="small" onClick={() => {
+                        const updated = notifications.map(x => x.id === n.id ? { ...x, read: true } : x);
+                        setNotifications(updated);
+                        saveToServer({ ch_notifications: updated });
+                      }}>
                         <CheckCircleIcon fontSize="small" />
                       </IconButton>
                     )
@@ -1067,9 +1132,14 @@ export default function ClarityHomePage() {
                                   <IconButton
                                     size="small"
                                     onClick={() => {
-                                      clarityHomeDb.duplicateExpense(item.id);
-                                      triggerToast('Expense entry duplicated.');
-                                      refreshDb();
+                                      const src = expenses.find(x => x.id === item.id);
+                                      if (src) {
+                                        const copy = { ...src, id: `exp-${Date.now()}`, expenseName: `${src.expenseName} (Copy)`, date: new Date().toISOString().slice(0, 10) };
+                                        const updated = [...expenses, copy];
+                                        setExpenses(updated);
+                                        triggerToast('Expense entry duplicated.');
+                                        saveToServer({ ch_expenses: updated });
+                                      }
                                     }}
                                   >
                                     <ContentCopyIcon fontSize="small" />
@@ -1097,13 +1167,16 @@ export default function ClarityHomePage() {
                                 color="error"
                                 onClick={() => {
                                   if (isInc) {
-                                    clarityHomeDb.deleteIncome(item.id);
+                                    const updated = income.filter(x => x.id !== item.id);
+                                    setIncome(updated);
                                     triggerToast('Income log removed.');
+                                    saveToServer({ ch_income: updated });
                                   } else {
-                                    clarityHomeDb.deleteExpense(item.id);
+                                    const updated = expenses.filter(x => x.id !== item.id);
+                                    setExpenses(updated);
                                     triggerToast('Expense log removed.');
+                                    saveToServer({ ch_expenses: updated });
                                   }
-                                  refreshDb();
                                 }}
                               >
                                 <DeleteIcon fontSize="small" />
@@ -1177,9 +1250,10 @@ export default function ClarityHomePage() {
                               size="small"
                               color="error"
                               onClick={() => {
-                                clarityHomeDb.deleteBudget(b.id);
+                                const updated = budgets.filter(x => x.id !== b.id);
+                                setBudgets(updated);
                                 triggerToast('Budget limit cleared.');
-                                refreshDb();
+                                saveToServer({ ch_budgets: updated });
                               }}
                             >
                               <DeleteIcon fontSize="small" />
@@ -1246,9 +1320,10 @@ export default function ClarityHomePage() {
                                 <Button
                                   size="small"
                                   onClick={() => {
-                                    clarityHomeDb.updateBill(b.id, { status: 'Paid' });
+                                    const updated = bills.map(x => x.id === b.id ? { ...x, status: 'Paid' as const } : x);
+                                    setBills(updated);
                                     triggerToast(`${b.title} Bill payment recorded.`);
-                                    refreshDb();
+                                    saveToServer({ ch_bills: updated });
                                   }}
                                 >
                                   Mark Paid
@@ -1258,9 +1333,10 @@ export default function ClarityHomePage() {
                                 size="small"
                                 color="error"
                                 onClick={() => {
-                                  clarityHomeDb.deleteBill(b.id);
+                                  const updated = bills.filter(x => x.id !== b.id);
+                                  setBills(updated);
                                   triggerToast('Utility tracker deleted.');
-                                  refreshDb();
+                                  saveToServer({ ch_bills: updated });
                                 }}
                               >
                                 <DeleteIcon fontSize="small" />
@@ -1337,9 +1413,21 @@ export default function ClarityHomePage() {
                             size="small"
                             variant="contained"
                             onClick={() => {
-                              clarityHomeDb.payLoanEMI(loan.id);
+                              // Pay EMI: reduce balance and add to payment history
+                              const today = new Date().toISOString().slice(0, 10);
+                              const updatedLoan = { ...loan, remainingBalance: Math.max(0, loan.remainingBalance - loan.emiAmount), paymentHistory: [...loan.paymentHistory, { date: today, amount: loan.emiAmount }] };
+                              const updatedLoans = loans.map(x => x.id === loan.id ? updatedLoan : x);
+                              setLoans(updatedLoans);
+                              // Also add EMI as an expense
+                              const emiExpense: Expense = { id: `exp-${Date.now()}`, expenseName: `${loan.loanName} EMI Payment`, category: 'EMI', amount: loan.emiAmount, date: today, paymentMethod: 'Bank Transfer', vendor: loan.loanName, notes: 'Auto loan EMI tracking', tags: ['loan', 'emi'], recurring: 'none', familyMember: 'Self', isBusiness: false };
+                              const updatedExpenses = [...expenses, emiExpense];
+                              setExpenses(updatedExpenses);
+                              // Add notification
+                              const notif: Notification = { id: `not-${Date.now()}`, title: 'EMI Payment Recorded', message: `Monthly EMI of ${loan.emiAmount} paid towards "${loan.loanName}". Outstanding balance: ${updatedLoan.remainingBalance}.`, date: new Date().toISOString(), type: 'emi', read: false };
+                              const updatedNotifs = [notif, ...notifications];
+                              setNotifications(updatedNotifs);
                               triggerToast('EMI payment logged in history ledger.');
-                              refreshDb();
+                              saveToServer({ ch_loans: updatedLoans, ch_expenses: updatedExpenses, ch_notifications: updatedNotifs });
                             }}
                           >
                             Pay EMI
@@ -1348,9 +1436,10 @@ export default function ClarityHomePage() {
                             size="small"
                             color="error"
                             onClick={() => {
-                              clarityHomeDb.deleteLoan(loan.id);
+                              const updated = loans.filter(x => x.id !== loan.id);
+                              setLoans(updated);
                               triggerToast('Loan ledger deleted.');
-                              refreshDb();
+                              saveToServer({ ch_loans: updated });
                             }}
                           >
                             <DeleteIcon fontSize="small" />
@@ -1460,9 +1549,10 @@ export default function ClarityHomePage() {
                                 onClick={() => {
                                   const newVal = prompt('Enter updated current valuation: ', String(i.currentValue));
                                   if (newVal) {
-                                    clarityHomeDb.updateInvestment(i.id, { currentValue: Number(newVal) });
+                                    const updated = investments.map(x => x.id === i.id ? { ...x, currentValue: Number(newVal) } : x);
+                                    setInvestments(updated);
                                     triggerToast('Investment value updated.');
-                                    refreshDb();
+                                    saveToServer({ ch_investments: updated });
                                   }
                                 }}
                               >
@@ -1472,9 +1562,10 @@ export default function ClarityHomePage() {
                                 size="small"
                                 color="error"
                                 onClick={() => {
-                                  clarityHomeDb.deleteInvestment(i.id);
+                                  const updated = investments.filter(x => x.id !== i.id);
+                                  setInvestments(updated);
                                   triggerToast('Investment entry cleared.');
-                                  refreshDb();
+                                  saveToServer({ ch_investments: updated });
                                 }}
                               >
                                 <DeleteIcon fontSize="small" />
@@ -1514,9 +1605,10 @@ export default function ClarityHomePage() {
                             size="small"
                             color="error"
                             onClick={() => {
-                              clarityHomeDb.deleteAsset(ast.id);
+                              const updated = assets.filter(x => x.id !== ast.id);
+                              setAssets(updated);
                               triggerToast('Asset removed.');
-                              refreshDb();
+                              saveToServer({ ch_assets: updated });
                             }}
                           >
                             <DeleteIcon fontSize="small" />
@@ -1573,9 +1665,10 @@ export default function ClarityHomePage() {
                                 <Button
                                   size="small"
                                   onClick={() => {
-                                    clarityHomeDb.updateDebt(d.id, { paidStatus: 'Paid' });
+                                    const updated = debts.map(x => x.id === d.id ? { ...x, paidStatus: 'Paid' as const } : x);
+                                    setDebts(updated);
                                     triggerToast('Marked debt settled.');
-                                    refreshDb();
+                                    saveToServer({ ch_debts: updated });
                                   }}
                                 >
                                   Mark Settled
@@ -1585,9 +1678,10 @@ export default function ClarityHomePage() {
                                 size="small"
                                 color="error"
                                 onClick={() => {
-                                  clarityHomeDb.deleteDebt(d.id);
+                                  const updated = debts.filter(x => x.id !== d.id);
+                                  setDebts(updated);
                                   triggerToast('Debt record deleted.');
-                                  refreshDb();
+                                  saveToServer({ ch_debts: updated });
                                 }}
                               >
                                 <DeleteIcon fontSize="small" />
@@ -1660,29 +1754,61 @@ export default function ClarityHomePage() {
                   <Card sx={{ height: '100%' }}>
                     <CardContent sx={{ p: 2 }}>
                       <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2 }}>Current Members & Shared Spend</Typography>
-                      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: '1fr 1fr 1fr' }, gap: 2 }}>
-                        {['Self', 'Wife', 'Daughter', 'Father', ...familyMembers.map(m => m.name)].map((name, index) => {
+                      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+                        {familyMembers.map((m, index) => {
+                          const name = m.name;
                           const totalSpent = expenses.filter(e => e.familyMember === name).reduce((sum, e) => sum + e.amount, 0);
                           return (
-                            <Box key={name}>
-                              <Card variant="outlined" sx={{ p: 1.5, textAlign: 'center' }}>
-                                <Avatar sx={{ mx: 'auto', mb: 1, bgcolor: CATEGORY_COLORS[index % CATEGORY_COLORS.length] }}>
-                                  {name[0]}
-                                </Avatar>
-                                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{name}</Typography>
-                                <Typography variant="caption" color="text.secondary">Spent: ₹{totalSpent.toLocaleString()}</Typography>
-                                {index >= 4 && (
+                            <Box key={m.id}>
+                              <Card 
+                                variant="outlined" 
+                                onClick={() => {
+                                  if (name !== 'Self') {
+                                    setSelectedMemberCreds(m);
+                                  }
+                                }}
+                                sx={{ 
+                                  p: 2, 
+                                  textAlign: 'center', 
+                                  height: '100%', 
+                                  display: 'flex', 
+                                  flexDirection: 'column', 
+                                  justifyContent: 'space-between',
+                                  cursor: name !== 'Self' ? 'pointer' : 'default',
+                                  transition: 'all 0.2s',
+                                  '&:hover': name !== 'Self' ? {
+                                    transform: 'translateY(-4px)',
+                                    boxShadow: theme.shadows[2],
+                                    borderColor: 'primary.main'
+                                  } : {}
+                                }}
+                              >
+                                <Box>
+                                  <Avatar sx={{ mx: 'auto', mb: 1, bgcolor: m.avatarColor || CATEGORY_COLORS[index % CATEGORY_COLORS.length] }}>
+                                    {name[0]}
+                                  </Avatar>
+                                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{name}</Typography>
+                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>{m.relationship}</Typography>
+                                  <Typography variant="caption" sx={{ fontWeight: 600, color: 'primary.main', display: 'block', mt: 0.5 }}>Spent: ₹{totalSpent.toLocaleString()}</Typography>
+                                  
+                                  {m.username && (
+                                    <Typography variant="caption" color="primary" sx={{ display: 'block', mt: 1.5, fontWeight: 700, fontSize: '0.75rem' }}>
+                                      Click to View Credentials
+                                    </Typography>
+                                  )}
+                                </Box>
+                                
+                                {name !== 'Self' && (
                                   <IconButton
                                     size="small"
                                     color="error"
-                                    sx={{ mt: 1, display: 'block', mx: 'auto' }}
-                                    onClick={() => {
-                                      const actualMem = familyMembers.find(m => m.name === name);
-                                      if (actualMem) {
-                                        clarityHomeDb.deleteFamilyMember(actualMem.id);
-                                        triggerToast('Family member removed.');
-                                        refreshDb();
-                                      }
+                                    sx={{ mt: 1.5, alignSelf: 'center' }}
+                                    onClick={(e) => {
+                                      e.stopPropagation(); // prevent opening credentials modal
+                                      const updated = familyMembers.filter(x => x.id !== m.id);
+                                      setFamilyMembers(updated);
+                                      triggerToast('Family member removed.');
+                                      saveToServer({ ch_family_members: updated });
                                     }}
                                   >
                                     <DeleteIcon fontSize="small" />
@@ -1762,9 +1888,10 @@ export default function ClarityHomePage() {
                                     size="small"
                                     color="error"
                                     onClick={() => {
-                                      clarityHomeDb.deletePaymentMethod(pm.id);
+                                      const updated = paymentMethods.filter(x => x.id !== pm.id);
+                                      setPaymentMethods(updated);
                                       triggerToast('Payment method unlinked.');
-                                      refreshDb();
+                                      saveToServer({ ch_payment_methods: updated });
                                     }}
                                   >
                                     <DeleteIcon fontSize="small" />
@@ -1870,69 +1997,71 @@ export default function ClarityHomePage() {
         {activeTab === 8 && (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             {/* Profile Config */}
-            <Card>
-              <CardContent sx={{ p: 2.5 }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <SecurityIcon color="primary" /> Profile & System Configuration
-                </Typography>
-                {settings && (
-                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 3 }}>
-                    <Box>
-                      <FormControl fullWidth>
-                        <InputLabel>Base Accounting Currency</InputLabel>
-                        <Select
-                          value={settings.currency}
-                          label="Base Accounting Currency"
-                          onChange={(e) => {
-                            const newSet = { ...settings, currency: e.target.value };
-                            clarityHomeDb.saveSettings(newSet);
-                            setSettings(newSet);
-                            triggerToast('Base currency updated.');
-                          }}
-                        >
-                          <MenuItem value="INR">Indian Rupee (₹)</MenuItem>
-                          <MenuItem value="USD">US Dollar ($)</MenuItem>
-                          <MenuItem value="EUR">Euro (€)</MenuItem>
-                          <MenuItem value="GBP">British Pound (£)</MenuItem>
-                        </Select>
-                      </FormControl>
-                    </Box>
-                    <Box>
-                      <FormControlLabel
-                        control={
-                          <Switch
-                            checked={settings.notificationsEnabled}
+            {user?.role !== 'FAMILY_MEMBER' && (
+              <Card>
+                <CardContent sx={{ p: 2.5 }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <SecurityIcon color="primary" /> Profile & System Configuration
+                  </Typography>
+                  {settings && (
+                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 3 }}>
+                      <Box>
+                        <FormControl fullWidth>
+                          <InputLabel>Base Accounting Currency</InputLabel>
+                          <Select
+                            value={settings.currency}
+                            label="Base Accounting Currency"
                             onChange={(e) => {
-                              const newSet = { ...settings, notificationsEnabled: e.target.checked };
-                              clarityHomeDb.saveSettings(newSet);
+                              const newSet = { ...settings, currency: e.target.value };
                               setSettings(newSet);
-                              triggerToast('Notification settings toggled.');
+                              triggerToast('Base currency updated.');
+                              saveToServer({ ch_settings: newSet });
                             }}
-                          />
-                        }
-                        label="Enable Budget Exceeded Alerts"
-                      />
+                          >
+                            <MenuItem value="INR">Indian Rupee (₹)</MenuItem>
+                            <MenuItem value="USD">US Dollar ($)</MenuItem>
+                            <MenuItem value="EUR">Euro (€)</MenuItem>
+                            <MenuItem value="GBP">British Pound (£)</MenuItem>
+                          </Select>
+                        </FormControl>
+                      </Box>
+                      <Box>
+                        <FormControlLabel
+                          control={
+                            <Switch
+                              checked={settings.notificationsEnabled}
+                              onChange={(e) => {
+                                const newSet = { ...settings, notificationsEnabled: e.target.checked };
+                                setSettings(newSet);
+                                triggerToast('Notification settings toggled.');
+                                saveToServer({ ch_settings: newSet });
+                              }}
+                            />
+                          }
+                          label="Enable Budget Exceeded Alerts"
+                        />
+                      </Box>
+                      <Box>
+                        <FormControlLabel
+                          control={
+                            <Switch
+                              checked={settings.twoFactorEnabled}
+                              onChange={(e) => {
+                                const newSet = { ...settings, twoFactorEnabled: e.target.checked };
+                                setSettings(newSet);
+                                triggerToast('Security setting updated.');
+                                saveToServer({ ch_settings: newSet });
+                              }}
+                            />
+                          }
+                          label="Require 2FA Authentication (Mock)"
+                        />
+                      </Box>
                     </Box>
-                    <Box>
-                      <FormControlLabel
-                        control={
-                          <Switch
-                            checked={settings.twoFactorEnabled}
-                            onChange={(e) => {
-                              const newSet = { ...settings, twoFactorEnabled: e.target.checked };
-                              clarityHomeDb.saveSettings(newSet);
-                              setSettings(newSet);
-                              triggerToast('Security setting updated.');
-                            }}
-                          />
-                        }
-                        label="Require 2FA Authentication (Mock)"
-                      />
-                    </Box>
-                  </Box>
-                )}
-              </CardContent>
-            </Card>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
             {/* Login Credentials & Security */}
             <Card>
@@ -1944,7 +2073,7 @@ export default function ClarityHomePage() {
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <TextField
                       fullWidth
-                      label="New Username (Email)"
+                      label="New Username"
                       value={newUsername}
                       onChange={(e) => setNewUsername(e.target.value)}
                     />
@@ -1974,62 +2103,68 @@ export default function ClarityHomePage() {
             </Card>
 
             {/* Data backups */}
-            <Card>
-              <CardContent sx={{ p: 2.5 }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2 }}>Database Backup, Restore & Reset</Typography>
-                <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 2, mb: 2 }}>
-                  <Button variant="outlined" startIcon={<FileDownloadIcon />} onClick={handleBackupDownload}>
-                    Download Database JSON
-                  </Button>
-                  <Button variant="outlined" component="label" startIcon={<UploadFileIcon />}>
-                    Restore JSON Backup
-                    <input type="file" accept=".json" hidden onChange={handleBackupUpload} />
-                  </Button>
-                </Stack>
-                <Alert severity="warning" action={
-                  <Button color="error" size="small" variant="contained" onClick={() => {
-                    if (confirm('Reset all financial records to default starting seeds?')) {
-                      clarityHomeDb.resetAllData();
-                      triggerToast('Database re-seeded successfully.', 'warning');
-                      refreshDb();
-                    }
-                  }}>
-                    Reset Database
-                  </Button>
-                }>
-                  Clearing or resetting data wipes all custom ledger entries, goals, loans, and settings. Save a JSON backup first.
-                </Alert>
-              </CardContent>
-            </Card>
+            {user?.role !== 'FAMILY_MEMBER' && (
+              <Card>
+                <CardContent sx={{ p: 2.5 }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2 }}>Database Backup, Restore & Reset</Typography>
+                  <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 2, mb: 2 }}>
+                    <Button variant="outlined" startIcon={<FileDownloadIcon />} onClick={handleBackupDownload}>
+                      Download Database JSON
+                    </Button>
+                    <Button variant="outlined" component="label" startIcon={<UploadFileIcon />}>
+                      Restore JSON Backup
+                      <input type="file" accept=".json" hidden onChange={handleBackupUpload} />
+                    </Button>
+                  </Stack>
+                  <Alert severity="warning" action={
+                    <Button color="error" size="small" variant="contained" onClick={() => {
+                      if (confirm('Reset all financial records to default starting seeds?')) {
+                        // Re-fetch from server to get the server-side default seed
+                        api.getClarityHomeData().then(data => {
+                          applyPayload(data && Object.keys(data).length > 0 ? data : {});
+                        });
+                        triggerToast('Database re-seeded successfully.', 'warning');
+                      }
+                    }}>
+                      Reset Database
+                    </Button>
+                  }>
+                    Clearing or resetting data wipes all custom ledger entries, goals, loans, and settings. Save a JSON backup first.
+                  </Alert>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Audit Logs */}
-            <Box>
-              <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <HistoryIcon color="primary" /> System Activity & Security Logs
-              </Typography>
-              <Card sx={{ borderRadius: 3, overflow: 'hidden', width: '100%', maxWidth: '100%', minWidth: 0 }}>
-                <Box sx={{ overflowX: 'auto', width: '100%', maxHeight: 300, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Timestamp</TableCell>
-                        <TableCell>Action performed</TableCell>
-                        <TableCell>Log details</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {activityLogs.map((log) => (
-                        <TableRow key={log.id}>
-                          <TableCell sx={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{log.timestamp}</TableCell>
-                          <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>{log.action}</TableCell>
-                          <TableCell sx={{ fontSize: '0.85rem' }}>{log.details}</TableCell>
+            {user?.role !== 'FAMILY_MEMBER' && (
+              <Box>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <HistoryIcon color="primary" /> System Activity & Security Logs
+                </Typography>
+                <Card sx={{ borderRadius: 3, overflow: 'hidden', width: '100%', maxWidth: '100%', minWidth: 0 }}>
+                  <Box sx={{ overflowX: 'auto', width: '100%', maxHeight: 300, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Timestamp</TableCell>
+                          <TableCell>Action performed</TableCell>
+                          <TableCell>Log details</TableCell>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </Box>
-              </Card>
-            </Box>
+                      </TableHead>
+                      <TableBody>
+                        {activityLogs.map((log) => (
+                          <TableRow key={log.id}>
+                            <TableCell sx={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{log.timestamp}</TableCell>
+                            <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>{log.action}</TableCell>
+                            <TableCell sx={{ fontSize: '0.85rem' }}>{log.details}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </Box>
+                </Card>
+              </Box>
+            )}
           </Box>
         )}
       </Box>
@@ -2611,6 +2746,63 @@ export default function ClarityHomePage() {
         <DialogActions>
           <Button onClick={() => setBalanceModalOpen(false)} variant="contained" fullWidth sx={{ textTransform: 'none', borderRadius: 2 }}>
             Close Details
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* FAMILY MEMBER CREDENTIALS DIALOG */}
+      <Dialog open={Boolean(selectedMemberCreds)} onClose={() => setSelectedMemberCreds(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, pb: 1 }}>Family Member Credentials</DialogTitle>
+        <DialogContent>
+          {selectedMemberCreds && (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2.5, pt: 2 }}>
+              <Avatar sx={{ width: 64, height: 64, bgcolor: selectedMemberCreds.avatarColor, fontSize: '1.5rem', fontWeight: 700 }}>
+                {selectedMemberCreds.name[0]}
+              </Avatar>
+              <Box sx={{ textAlign: 'center' }}>
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>{selectedMemberCreds.name}</Typography>
+                <Typography variant="body2" color="text.secondary">{selectedMemberCreds.relationship}</Typography>
+              </Box>
+              
+              <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 1.5, p: 2, bgcolor: 'action.hover', borderRadius: 3, border: '1px solid', borderColor: 'divider' }}>
+                <Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>Portal Username</Typography>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 0.5 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 700, wordBreak: 'break-all' }}>
+                      {selectedMemberCreds.username || 'Creating Account...'}
+                    </Typography>
+                    {selectedMemberCreds.username && (
+                      <Button size="small" variant="text" sx={{ textTransform: 'none', py: 0 }} onClick={() => { navigator.clipboard.writeText(selectedMemberCreds.username); triggerToast('Username copied!'); }}>
+                        Copy
+                      </Button>
+                    )}
+                  </Box>
+                </Box>
+                <Divider />
+                <Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>Portal Password</Typography>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 0.5 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 700, fontFamily: 'monospace' }}>
+                      {selectedMemberCreds.password || 'Creating Account...'}
+                    </Typography>
+                    {selectedMemberCreds.password && (
+                      <Button size="small" variant="text" sx={{ textTransform: 'none', py: 0 }} onClick={() => { navigator.clipboard.writeText(selectedMemberCreds.password); triggerToast('Password copied!'); }}>
+                        Copy
+                      </Button>
+                    )}
+                  </Box>
+                </Box>
+              </Box>
+              
+              <Typography variant="caption" color="text.secondary" align="center">
+                This family member can log in to the portal using these credentials to view and manage their household expenses.
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSelectedMemberCreds(null)} variant="contained" fullWidth sx={{ textTransform: 'none', borderRadius: 2 }}>
+            Close
           </Button>
         </DialogActions>
       </Dialog>

@@ -39,7 +39,7 @@ export default function App() {
       <Route path="/reports" element={<Protected allow={['TEACHER']}><ReportsPage /></Protected>} />
       <Route path="/notifications" element={<Protected allow={['TEACHER']}><NotificationsPage /></Protected>} />
       <Route path="/topics-master" element={<Protected allow={['TEACHER']}><TopicsMasterPage /></Protected>} />
-      <Route path="/clarity-home" element={<Protected allow={['TEACHER', 'PARENT', 'STUDENT']}><ClarityHomePage /></Protected>} />
+      <Route path="/clarity-home" element={<Protected allow={['TEACHER', 'PARENT', 'STUDENT', 'FAMILY_MEMBER']}><ClarityHomePage /></Protected>} />
     </Routes>
   );
 }

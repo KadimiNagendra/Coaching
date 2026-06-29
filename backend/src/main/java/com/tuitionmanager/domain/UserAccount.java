@@ -1,7 +1,6 @@
 package com.tuitionmanager.domain;
 
 import jakarta.persistence.*;
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import java.time.Instant;
 
@@ -11,7 +10,7 @@ public class UserAccount {
   @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
   public Long id;
 
-  @Email @NotBlank @Column(unique = true, nullable = false)
+  @NotBlank @Column(unique = true, nullable = false)
   public String email;
 
   @NotBlank @Column(nullable = false)
@@ -25,6 +24,7 @@ public class UserAccount {
 
   public Long linkedStudentId;
   public Long linkedParentId;
+  public String linkedAdminEmail;
 
   public boolean enabled = true;
   public Instant createdAt = Instant.now();

@@ -6,4 +6,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface UserAccountRepository extends JpaRepository<UserAccount, Long> {
   Optional<UserAccount> findByEmail(String email);
+  Optional<UserAccount> findByEmailIgnoreCase(String email);
+  java.util.List<UserAccount> findByLinkedAdminEmailAndRole(String linkedAdminEmail, com.tuitionmanager.domain.Role role);
 }

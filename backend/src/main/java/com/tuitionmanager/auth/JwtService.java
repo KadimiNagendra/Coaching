@@ -27,7 +27,7 @@ public class JwtService {
   public String generate(UserAccount user) {
     Map<String, Object> header = Map.of("alg", "HS256", "typ", "JWT");
     Map<String, Object> payload = new LinkedHashMap<>();
-    payload.put("sub", user.email);
+    payload.put("sub", String.valueOf(user.id));
     payload.put("name", user.fullName);
     payload.put("role", user.role.name());
     payload.put("exp", Instant.now().plusSeconds(expirationMinutes * 60).getEpochSecond());

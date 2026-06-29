@@ -3,7 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { getToken, getUser, homePath } from '../api/client';
 import { AppShell } from './AppShell';
 
-type Role = 'TEACHER' | 'PARENT' | 'STUDENT';
+type Role = 'TEACHER' | 'PARENT' | 'STUDENT' | 'FAMILY_MEMBER';
 
 export function Protected({ children, allow, noShell }: { children: ReactElement; allow: Role[]; noShell?: boolean }) {
   if (!getToken()) return <Navigate to="/login" replace />;

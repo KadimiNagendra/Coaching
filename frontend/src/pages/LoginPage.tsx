@@ -6,7 +6,7 @@ import { alpha } from '@mui/material/styles';
 import { api, homePath, setToken, setUser } from '../api/client';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('teacher@example.com');
+  const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('Admin@123');
   const [error, setError] = useState('');
   const navigate = useNavigate();
@@ -15,12 +15,12 @@ export default function LoginPage() {
     event.preventDefault();
     setError('');
     try {
-      const result = await api.login(email, password);
+      const result = await api.login(username, password);
       setToken(result.token);
       setUser(result.user);
       navigate(homePath(result.user.role));
     } catch {
-      setError('Unable to sign in. Check the email and password.');
+      setError('Unable to sign in. Check the username and password.');
     }
   }
 
@@ -67,7 +67,7 @@ export default function LoginPage() {
             </Typography>
             <Stack component="form" spacing={2.5} onSubmit={submit}>
               {error && <Alert severity="error">{error}</Alert>}
-              <TextField label="Email" value={email} onChange={(e) => setEmail(e.target.value)} fullWidth />
+              <TextField label="Username" value={username} onChange={(e) => setUsername(e.target.value)} fullWidth />
               <TextField label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} fullWidth />
               <Button type="submit" size="large" fullWidth sx={{ py: 1.25, mt: 1 }}>
                 Sign in

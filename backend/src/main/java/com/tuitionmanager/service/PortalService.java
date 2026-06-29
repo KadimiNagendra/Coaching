@@ -1,16 +1,16 @@
 package com.tuitionmanager.service;
 
+import com.tuitionmanager.auth.AccountLookup;
 import com.tuitionmanager.domain.*;
 import com.tuitionmanager.repository.*;
 import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import com.tuitionmanager.web.PortalController.ResetCredentialsRequest;
+import com.tuitionmanager.web.AuthController.ResetCredentialsRequest;
 
 @Service
 public class PortalService {
@@ -23,8 +23,10 @@ public class PortalService {
   private final HomeworkRepository homework;
   private final NotificationLogRepository notifications;
   private final PasswordEncoder passwordEncoder;
+  private final ClarityHomeDataRepository clarityHomeDataRepository;
+  private final AccountLookup accountLookup;
 
-  public PortalService(UserAccountRepository users, StudentRepository students, FeePaymentRepository fees, AttendanceRecordRepository attendance, ExamRepository exams, ExamResultRepository examResults, HomeworkRepository homework, NotificationLogRepository notifications, PasswordEncoder passwordEncoder) {
+  public PortalService(UserAccountRepository users, StudentRepository students, FeePaymentRepository fees, AttendanceRecordRepository attendance, ExamRepository exams, ExamResultRepository examResults, HomeworkRepository homework, NotificationLogRepository notifications, PasswordEncoder passwordEncoder, ClarityHomeDataRepository clarityHomeDataRepository, AccountLookup accountLookup) {
     this.users = users;
     this.students = students;
     this.fees = fees;
@@ -34,11 +36,13 @@ public class PortalService {
     this.homework = homework;
     this.notifications = notifications;
     this.passwordEncoder = passwordEncoder;
+    this.clarityHomeDataRepository = clarityHomeDataRepository;
+    this.accountLookup = accountLookup;
   }
 
   public Map<String, Object> overview() {
     UserAccount user = currentUser();
-    List<Student> linkedStudents = linkedStudents(user);
+    List<Student> linkedStudents = (user.role == Role.FAMILY_MEMBER) ? List.of() : linkedStudents(user);
     return Map.of(
       "role", user.role.name(),
       "fullName", user.fullName,
@@ -49,11 +53,12 @@ public class PortalService {
 
   public void resetCredentials(ResetCredentialsRequest request) {
     UserAccount user = currentUser();
-    users.findByEmail(request.newUsername()).ifPresent(existing -> {
+    accountLookup.findByUsername(request.newUsername()).ifPresent(existing -> {
       if (!existing.id.equals(user.id)) {
-        throw new ResponseStatusException(HttpStatus.CONFLICT, "Username (email) is already in use");
+        throw new ResponseStatusException(HttpStatus.CONFLICT, "Username is already in use");
       }
     });
+    String oldUsername = user.email;
     user.email = request.newUsername();
     user.passwordHash = passwordEncoder.encode(request.newPassword());
     users.save(user);
@@ -72,6 +77,32 @@ public class PortalService {
         student.initialParentPassword = request.newPassword();
         students.save(student);
       }
+    } else if (user.role == Role.FAMILY_MEMBER && user.linkedAdminEmail != null) {
+      clarityHomeDataRepository.findById(user.linkedAdminEmail).ifPresent(data -> {
+        try {
+          com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+          Map<String, Object> payload = mapper.readValue(data.jsonData, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+          Object membersObj = payload.get("ch_family_members");
+          if (membersObj instanceof List) {
+            List<Map<String, Object>> members = (List<Map<String, Object>>) membersObj;
+            boolean updated = false;
+            for (Map<String, Object> member : members) {
+              String username = (String) member.get("username");
+              if (username != null && username.equalsIgnoreCase(oldUsername)) {
+                member.put("username", request.newUsername());
+                member.put("password", request.newPassword());
+                updated = true;
+              }
+            }
+            if (updated) {
+              data.jsonData = mapper.writeValueAsString(payload);
+              clarityHomeDataRepository.save(data);
+            }
+          }
+        } catch (Exception e) {
+          e.printStackTrace();
+        }
+      });
     }
   }
 
@@ -112,11 +143,7 @@ public class PortalService {
   }
 
   private UserAccount currentUser() {
-    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-    if (authentication == null || authentication.getName() == null) {
-      throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Not authenticated");
-    }
-    return users.findByEmail(authentication.getName()).orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found"));
+    return accountLookup.requireUser(SecurityContextHolder.getContext().getAuthentication());
   }
 
   private List<Long> studentIds(UserAccount user) {

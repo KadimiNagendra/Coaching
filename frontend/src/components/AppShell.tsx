@@ -128,7 +128,10 @@ export function AppShell({ children }: PropsWithChildren) {
       <Divider sx={{ borderColor: alpha('#ffffff', 0.08), mx: 2 }} />
       <List sx={{ px: 1.5, py: 2, flexGrow: 1 }}>
         {isClarityHome ? (
-          clarityNav.map((item) => {
+          (user?.role === 'FAMILY_MEMBER'
+            ? clarityNav.filter(item => item.path.includes('tab=dashboard') || item.path.includes('tab=income-expenses') || item.path.includes('tab=system-settings'))
+            : clarityNav
+          ).map((item) => {
             const currentTab = new URLSearchParams(location.search).get('tab') || 'dashboard';
             const itemTab = item.path.split('tab=')[1] || 'dashboard';
             const isSelected = currentTab === itemTab;

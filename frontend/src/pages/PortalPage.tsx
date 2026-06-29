@@ -56,7 +56,7 @@ export default function PortalPage() {
         navigate('/login');
       }, 2000);
     } catch (err: any) {
-      let errMsg = 'Failed to update credentials. Please check format.';
+      let errMsg = 'Failed to update credentials.';
       if (err.message) {
         try {
           const parsed = JSON.parse(err.message);
@@ -269,7 +269,7 @@ export default function PortalPage() {
                 Reset Credentials
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                Update your portal login email username and password. After resetting, you will be automatically signed out and prompted to log in with your new credentials.
+                Update your portal login username and password. After resetting, you will be automatically signed out and prompted to log in with your new credentials.
               </Typography>
 
               {settingsError && <Alert severity="error" sx={{ mb: 2.5 }}>{settingsError}</Alert>}
@@ -277,13 +277,12 @@ export default function PortalPage() {
 
               <Stack component="form" spacing={2.5} onSubmit={handleResetSubmit}>
                 <TextField
-                  label="New Username (Email format)"
-                  type="email"
+                  label="New Username"
                   required
                   fullWidth
                   value={newUsername}
                   onChange={(e) => setNewUsername(e.target.value)}
-                  placeholder="e.g. child@domain.com"
+                  placeholder="e.g. Teacher"
                 />
                 
                 <TextField

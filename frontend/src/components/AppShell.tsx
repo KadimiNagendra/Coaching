@@ -19,9 +19,17 @@ import ListAltIcon from '@mui/icons-material/ListAlt';
 import ExpandLess from '@mui/icons-material/ExpandLess';
 import ExpandMore from '@mui/icons-material/ExpandMore';
 import HomeIcon from '@mui/icons-material/Home';
+import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
+import PriceCheckIcon from '@mui/icons-material/PriceCheck';
+import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
+import ShowChartIcon from '@mui/icons-material/ShowChart';
+import PeopleIcon from '@mui/icons-material/People';
+import CameraAltIcon from '@mui/icons-material/CameraAlt';
+import SettingsIcon from '@mui/icons-material/Settings';
+import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import { AppBar, Avatar, Box, CssBaseline, Divider, Drawer, IconButton, List, ListItemButton, ListItemIcon, ListItemText, Toolbar, Typography, Button, Collapse, Tooltip } from '@mui/material';
 import { alpha } from '@mui/material/styles';
-import { setToken, getUser } from '../api/client';
+import { setToken, getUser, homePath } from '../api/client';
 
 const drawerWidth = 280;
 
@@ -47,11 +55,25 @@ const portalNav = [
   { label: 'Results', path: '/results', icon: <EmojiEventsOutlinedIcon fontSize="small" /> }
 ];
 
+const clarityNav = [
+  { label: 'Dashboard', path: '/clarity-home?tab=dashboard', icon: <DashboardIcon fontSize="small" /> },
+  { label: 'Income & Expenses', path: '/clarity-home?tab=income-expenses', icon: <AccountBalanceWalletIcon fontSize="small" /> },
+  { label: 'Budgets & Bills', path: '/clarity-home?tab=budgets-bills', icon: <NotificationsActiveIcon fontSize="small" /> },
+  { label: 'Loans & EMIs', path: '/clarity-home?tab=loans-emis', icon: <PriceCheckIcon fontSize="small" /> },
+  { label: 'Investments', path: '/clarity-home?tab=investments', icon: <ShowChartIcon fontSize="small" /> },
+  { label: 'Assets & Debts', path: '/clarity-home?tab=assets-debts', icon: <AccountBalanceIcon fontSize="small" /> },
+  { label: 'Family & Payments', path: '/clarity-home?tab=family-payments', icon: <PeopleIcon fontSize="small" /> },
+  { label: 'Reports & Exporter', path: '/clarity-home?tab=reports-exporter', icon: <AssessmentIcon fontSize="small" /> },
+  { label: 'System Settings', path: '/clarity-home?tab=system-settings', icon: <SettingsIcon fontSize="small" /> }
+];
+
 export function AppShell({ children }: PropsWithChildren) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const user = getUser();
+  const isClarityHome = location.pathname.startsWith('/clarity-home');
+  const backPath = homePath(user?.role);
   
   const [adminOpen, setAdminOpen] = useState(() => {
     const subPaths = ['/students', '/notifications', '/finance', '/reports'];
@@ -74,20 +96,20 @@ export function AppShell({ children }: PropsWithChildren) {
             borderColor: alpha('#818cf8', 0.35)
           }}
         >
-          <SchoolIcon fontSize="small" />
+          {isClarityHome ? <HomeIcon fontSize="small" /> : <SchoolIcon fontSize="small" />}
         </Avatar>
-        <Box sx={{ flexGrow: 1 }}>
-          <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2, color: '#f8fafc' }}>
-            Clarity
+        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+          <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2, color: '#f8fafc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {isClarityHome ? 'Clarity' : 'Clarity'}
           </Typography>
-          <Typography variant="caption" sx={{ color: alpha('#ffffff', 0.55), letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-            {portalLabel}
+          <Typography variant="caption" sx={{ color: alpha('#ffffff', 0.55), letterSpacing: '0.04em', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
+            {isClarityHome ? 'Home Finance' : portalLabel}
           </Typography>
         </Box>
-        <Tooltip title="Clarity Home (Personal Finance)">
+        <Tooltip title={isClarityHome ? "Back to Portal" : "Clarity Home (Personal Finance)"}>
           <IconButton
             component={Link}
-            to="/clarity-home"
+            to={isClarityHome ? backPath : "/clarity-home"}
             sx={{
               color: '#c7d2fe',
               bgcolor: alpha('#818cf8', 0.1),
@@ -99,13 +121,31 @@ export function AppShell({ children }: PropsWithChildren) {
               borderColor: alpha('#818cf8', 0.2)
             }}
           >
-            <HomeIcon fontSize="small" />
+            {isClarityHome ? <SchoolIcon fontSize="small" /> : <HomeIcon fontSize="small" />}
           </IconButton>
         </Tooltip>
       </Toolbar>
       <Divider sx={{ borderColor: alpha('#ffffff', 0.08), mx: 2 }} />
       <List sx={{ px: 1.5, py: 2, flexGrow: 1 }}>
-        {user?.role === 'PARENT' || user?.role === 'STUDENT' ? (
+        {isClarityHome ? (
+          clarityNav.map((item) => {
+            const currentTab = new URLSearchParams(location.search).get('tab') || 'dashboard';
+            const itemTab = item.path.split('tab=')[1] || 'dashboard';
+            const isSelected = currentTab === itemTab;
+            return (
+              <ListItemButton
+                key={item.path}
+                component={Link}
+                to={item.path}
+                selected={isSelected}
+                onClick={() => setMobileOpen(false)}
+              >
+                <ListItemIcon>{item.icon}</ListItemIcon>
+                <ListItemText primary={item.label} />
+              </ListItemButton>
+            );
+          })
+        ) : user?.role === 'PARENT' || user?.role === 'STUDENT' ? (
           portalNav.map((item) => (
             <ListItemButton
               key={item.path}
@@ -182,7 +222,8 @@ export function AppShell({ children }: PropsWithChildren) {
         elevation={0}
         sx={{
           width: { sm: `calc(100% - ${drawerWidth}px)` },
-          ml: { sm: `${drawerWidth}px` }
+          ml: { sm: `${drawerWidth}px` },
+          display: isClarityHome ? { xs: 'flex', sm: 'none' } : 'flex'
         }}
       >
         <Toolbar sx={{ minHeight: { xs: 64, sm: 70 } }}>
@@ -195,9 +236,11 @@ export function AppShell({ children }: PropsWithChildren) {
             <MenuIcon />
           </IconButton>
           <Box sx={{ flexGrow: 1 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 600, color: 'text.primary' }}>
-              {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-            </Typography>
+            {!isClarityHome && (
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, color: 'text.primary' }}>
+                {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+              </Typography>
+            )}
           </Box>
 
         </Toolbar>
@@ -226,7 +269,7 @@ export function AppShell({ children }: PropsWithChildren) {
           flexGrow: 1,
           width: { sm: `calc(100% - ${drawerWidth}px)` },
           p: { xs: 2, md: 3 },
-          mt: { xs: 8, sm: 9 }
+          mt: isClarityHome ? { xs: 8, sm: 0 } : { xs: 8, sm: 9 }
         }}
       >
         {children}

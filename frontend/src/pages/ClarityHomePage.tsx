@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   Box, Card, CardContent, Typography, Button, IconButton, TextField, MenuItem, Select, FormControl, InputLabel,
-  Table, TableHead, TableRow, TableCell, TableBody, Tabs, Tab, Stack, Chip, Dialog, DialogTitle,
+  Table, TableHead, TableRow, TableCell, TableBody, Tabs, Tab, Stack, Chip, Dialog, DialogTitle, Divider,
   DialogContent, DialogActions, Avatar, alpha, Tooltip, Alert, LinearProgress, Switch,
-  FormControlLabel
+  FormControlLabel, Badge, Popover
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import useMediaQuery from '@mui/material/useMediaQuery';
@@ -39,7 +39,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 
 // DB and API imports
-import { getUser, homePath } from '../api/client';
+import { getUser, homePath, api } from '../api/client';
 import {
   clarityHomeDb, Income, Expense, Budget, Bill, SavingsGoal,
   Loan, Investment, Asset, Debt, WishlistItem, Notification,
@@ -53,7 +53,22 @@ const CATEGORY_COLORS = [
 ];
 
 export default function ClarityHomePage() {
-  const [activeTab, setActiveTab] = useState(0);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab') || 'dashboard';
+
+  const tabMap: Record<string, number> = {
+    'dashboard': 0,
+    'income-expenses': 1,
+    'budgets-bills': 2,
+    'loans-emis': 3,
+    'investments': 4,
+    'assets-debts': 5,
+    'family-payments': 6,
+    'reports-exporter': 7,
+    'system-settings': 8
+  };
+
+  const activeTab = tabMap[tabParam] ?? 0;
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [mounted, setMounted] = useState(false);
@@ -92,6 +107,7 @@ export default function ClarityHomePage() {
   const [investmentModalOpen, setInvestmentModalOpen] = useState(false);
   const [assetModalOpen, setAssetModalOpen] = useState(false);
   const [debtModalOpen, setDebtModalOpen] = useState(false);
+  const [balanceModalOpen, setBalanceModalOpen] = useState(false);
   const [wishlistModalOpen, setWishlistModalOpen] = useState(false);
 
   // Forms states
@@ -141,14 +157,82 @@ export default function ClarityHomePage() {
   const [expenseFilterPayment, setExpenseFilterPayment] = useState('All');
   const [expenseFilterType, setExpenseFilterType] = useState('All'); // All, Personal, Business
 
-  // OCR state
-  const [ocrScanning, setOcrScanning] = useState(false);
-  const [ocrFileName, setOcrFileName] = useState('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
+
+
+  // Credentials reset states
+  const [newUsername, setNewUsername] = useState(user?.email || '');
+  const [newPassword, setNewPassword] = useState('');
 
   // Reports filters
   const [reportType, setReportType] = useState<'income' | 'expense' | 'savings' | 'budget' | 'family'>('expense');
   const [reportRange, setReportRange] = useState<'month' | 'year' | 'all'>('month');
+
+  // Notifications Popover Anchor State
+  const [notificationsAnchorEl, setNotificationsAnchorEl] = useState<HTMLButtonElement | null>(null);
+
+  const handleOpenNotifications = (event: React.MouseEvent<HTMLButtonElement>) => {
+    setNotificationsAnchorEl(event.currentTarget);
+  };
+
+  const handleCloseNotifications = () => {
+    setNotificationsAnchorEl(null);
+  };
+
+  const [dbLoading, setDbLoading] = useState(true);
+
+  const syncToServer = () => {
+    const STORAGE_KEYS = {
+      INCOME: 'ch_income',
+      EXPENSES: 'ch_expenses',
+      BUDGETS: 'ch_budgets',
+      BILLS: 'ch_bills',
+      SAVINGS_GOALS: 'ch_savings_goals',
+      LOANS: 'ch_loans',
+      INVESTMENTS: 'ch_investments',
+      ASSETS: 'ch_assets',
+      DEBTS: 'ch_debts',
+      WISHLIST: 'ch_wishlist',
+      NOTIFICATIONS: 'ch_notifications',
+      FAMILY_MEMBERS: 'ch_family_members',
+      PAYMENT_METHODS: 'ch_payment_methods',
+      SETTINGS: 'ch_settings',
+      ACTIVITY_LOGS: 'ch_activity_logs'
+    };
+    const dump: Record<string, any> = {};
+    Object.values(STORAGE_KEYS).forEach(key => {
+      const val = localStorage.getItem(key);
+      if (val) {
+        try {
+          dump[key] = JSON.parse(val);
+        } catch (e) {
+          dump[key] = val;
+        }
+      }
+    });
+    api.saveClarityHomeData(dump).catch(err => {
+      console.error("Failed to sync Clarity Home data to server", err);
+    });
+  };
+
+  const handleResetCredentials = () => {
+    if (!newUsername.trim() || !newPassword.trim()) {
+      triggerToast('Username and password cannot be empty.', 'error');
+      return;
+    }
+    api.resetCredentials(newUsername, newPassword)
+      .then(() => {
+        triggerToast('Credentials successfully updated. Redirecting to login...', 'success');
+        setTimeout(() => {
+          localStorage.removeItem('tm_token');
+          localStorage.removeItem('tm_user');
+          window.location.href = '/login';
+        }, 2000);
+      })
+      .catch((err) => {
+        console.error("Failed to reset credentials", err);
+        triggerToast(err.message || 'Failed to update credentials. Please check format.', 'error');
+      });
+  };
 
   // Load database
   const refreshDb = () => {
@@ -168,12 +252,35 @@ export default function ClarityHomePage() {
     setPaymentMethods(clarityHomeDb.getPaymentMethods());
     setSettings(clarityHomeDb.getSettings());
     setActivityLogs(clarityHomeDb.getActivityLogs());
+
+    if (mounted) {
+      syncToServer();
+    }
   };
 
   useEffect(() => {
-    refreshDb();
-    setMounted(true);
+    api.getClarityHomeData()
+      .then((data) => {
+        if (data && Object.keys(data).length > 0) {
+          Object.keys(data).forEach(key => {
+            if (data[key] !== null && data[key] !== undefined) {
+              localStorage.setItem(key, typeof data[key] === 'string' ? data[key] : JSON.stringify(data[key]));
+            }
+          });
+        }
+        refreshDb();
+        setMounted(true);
+        setDbLoading(false);
+      })
+      .catch((err) => {
+        console.error("Failed to fetch Clarity Home data from server, using local store", err);
+        refreshDb();
+        setMounted(true);
+        setDbLoading(false);
+      });
   }, []);
+
+
 
   const triggerToast = (text: string, severity: 'success' | 'error' | 'warning' | 'info' = 'success') => {
     setToastMessage({ text, severity });
@@ -209,6 +316,10 @@ export default function ClarityHomePage() {
       upcomingBillsCount
     };
   }, [income, expenses, budgets, bills, goals]);
+
+  const unreadNotificationsCount = useMemo(() => {
+    return notifications.filter(n => !n.read).length;
+  }, [notifications]);
 
   // Chart data formatting
   const categoryChartData = useMemo(() => {
@@ -306,10 +417,10 @@ export default function ClarityHomePage() {
       const method = item.paymentMethod || '';
       const vendor = 'vendor' in item ? item.vendor : '';
       return name.toLowerCase().includes(q) ||
-             notes.toLowerCase().includes(q) ||
-             cat.toLowerCase().includes(q) ||
-             method.toLowerCase().includes(q) ||
-             vendor.toLowerCase().includes(q);
+        notes.toLowerCase().includes(q) ||
+        cat.toLowerCase().includes(q) ||
+        method.toLowerCase().includes(q) ||
+        vendor.toLowerCase().includes(q);
     }).sort((a, b) => b.date.localeCompare(a.date));
   }, [income, expenses, globalSearch, expenseFilterCategory, expenseFilterFamily, expenseFilterPayment, expenseFilterType]);
 
@@ -455,28 +566,7 @@ export default function ClarityHomePage() {
     refreshDb();
   };
 
-  const handleMockOcrTrigger = (fileName: string) => {
-    setOcrScanning(true);
-    setOcrFileName(fileName);
-    clarityHomeDb.runMockOcr(fileName).then((extracted) => {
-      setOcrScanning(false);
-      setExpenseForm({
-        expenseName: extracted.expenseName,
-        category: extracted.category as any,
-        amount: extracted.amount,
-        date: extracted.date,
-        paymentMethod: 'Credit Card',
-        vendor: extracted.vendor,
-        notes: extracted.notes,
-        tags: extracted.tags,
-        recurring: 'none',
-        familyMember: 'Self',
-        isBusiness: false
-      });
-      setExpenseModalOpen(true);
-      triggerToast('OCR successfully read receipt data!', 'info');
-    });
-  };
+
 
   // Report generating
   const generatedReportData = useMemo(() => {
@@ -604,950 +694,491 @@ export default function ClarityHomePage() {
     }
   };
 
+  if (dbLoading) {
+    return (
+      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: 2 }}>
+        <LinearProgress sx={{ width: 160, height: 6, borderRadius: 3 }} />
+        <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>Loading Personal Finance data from database...</Typography>
+      </Box>
+    );
+  }
+
   return (
-    <Box sx={{
-      minHeight: '100vh',
-      bgcolor: '#f4f6fb',
-      p: { xs: 2, md: 4 },
-      display: 'flex',
-      flexDirection: 'column',
-      gap: 3
-    }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, pt: 0.5 }}>
       {toastMessage && (
         <Alert severity={toastMessage.severity} variant="filled" sx={{ position: 'fixed', top: 20, right: 20, zIndex: 9999 }}>
           {toastMessage.text}
         </Alert>
       )}
+      {/* Global Page Header: Date & Notification Icon */}
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', pb: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.5 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.secondary' }}>
+            {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+          </Typography>
+          <IconButton onClick={handleOpenNotifications} color="primary">
+            <Badge badgeContent={unreadNotificationsCount} color="error">
+              <NotificationsIcon />
+            </Badge>
+          </IconButton>
+          <Popover
+            open={Boolean(notificationsAnchorEl)}
+            anchorEl={notificationsAnchorEl}
+            onClose={handleCloseNotifications}
+            anchorOrigin={{
+              vertical: 'bottom',
+              horizontal: 'right',
+            }}
+            transformOrigin={{
+              vertical: 'top',
+              horizontal: 'right',
+            }}
+            slotProps={{
+              paper: {
+                sx: { p: 2.5, width: 320, maxHeight: 400, display: 'flex', flexDirection: 'column', gap: 1.5, borderRadius: 3 }
+              }
+            }}
+          >
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <NotificationsIcon color="primary" /> Recent Alerts
+            </Typography>
+            <Stack spacing={1.5} sx={{ overflowY: 'auto' }}>
+              {notifications.slice(0, 5).map(n => (
+                <Alert
+                  key={n.id}
+                  severity={n.type === 'budget' || n.type === 'emi' ? 'warning' : 'info'}
+                  sx={{ py: 0.5, px: 1.5, fontSize: '0.825rem' }}
+                  action={
+                    !n.read && (
+                      <IconButton size="small" onClick={() => { clarityHomeDb.markNotificationRead(n.id); refreshDb(); }}>
+                        <CheckCircleIcon fontSize="small" />
+                      </IconButton>
+                    )
+                  }
+                >
+                  <strong>{n.title}</strong> — {n.message}
+                </Alert>
+              ))}
+              {notifications.length === 0 && (
+                <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 2 }}>No incoming system messages.</Typography>
+              )}
+            </Stack>
+          </Popover>
+        </Box>
+      </Box>
 
-      {/* Responsive Workspace Grid */}
-      <Box sx={{
-        display: 'grid',
-        gridTemplateColumns: { xs: '1fr', md: '3fr 9fr' },
-        gap: 3,
-        alignItems: 'start'
-      }}>
-        {/* Left Side Tab Navigation: Vertical and sticky on desktop, scrollable row at top on mobile */}
-        <Box sx={{
-          position: { xs: 'static', md: 'sticky' },
-          top: { xs: 'auto', md: 24 },
-          maxHeight: { xs: 'auto', md: 'calc(100vh - 48px)' },
-          display: 'flex',
-          flexDirection: 'column',
-          zIndex: 10,
-          minWidth: 0
-        }}>
-          <Card sx={{ borderRadius: 3, display: 'flex', flexDirection: 'column', maxHeight: '100%', overflow: 'hidden' }}>
-            <CardContent sx={{ p: 2, display: 'flex', flexDirection: 'column', maxHeight: '100%', overflow: 'hidden' }}>
+      {/* Main Tab Content */}
+      <Box sx={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+        {/* TAB 0: DASHBOARD */}
+        {activeTab === 0 && (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+
+            {/* Core interactive buttons grid */}
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' }, gap: 2 }}>
               <Button
                 variant="outlined"
-                startIcon={<ArrowBackIcon />}
-                component={Link}
-                to={backPath}
-                fullWidth
+                size="large"
+                startIcon={<AddIcon />}
+                onClick={() => { setSelectedExpense(null); setExpenseModalOpen(true); }}
                 sx={{
-                  mb: 2,
-                  borderColor: alpha('#4f46e5', 0.25),
-                  color: 'primary.main',
+                  py: 2.5,
+                  borderRadius: 3,
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  fontSize: '1rem',
+                  color: '#ef4444',
+                  borderColor: alpha('#ef4444', 0.3),
+                  bgcolor: alpha('#ef4444', 0.02),
                   '&:hover': {
-                    borderColor: 'primary.main',
-                    bgcolor: alpha('#4f46e5', 0.04)
+                    borderColor: '#ef4444',
+                    bgcolor: alpha('#ef4444', 0.08),
                   }
                 }}
               >
-                Back to Portal
+                Log Expense
               </Button>
-              <Typography variant="subtitle2" color="text.secondary" sx={{ textTransform: 'uppercase', px: 2, mb: 1.5, fontWeight: 700, fontSize: '0.75rem', letterSpacing: '0.05em', display: { xs: 'none', md: 'block' } }}>
-                Suite Portals
-              </Typography>
-              <Box sx={{
-                flexGrow: 1,
-                overflowY: { xs: 'visible', md: 'auto' },
-                scrollbarWidth: 'thin',
-                '&::-webkit-scrollbar': {
-                  width: '4px'
-                },
-                '&::-webkit-scrollbar-track': {
-                  backgroundColor: 'rgba(0,0,0,0.02)'
-                },
-                '&::-webkit-scrollbar-thumb': {
-                  backgroundColor: 'rgba(0,0,0,0.1)',
-                  borderRadius: '2px'
-                }
-              }}>
-                <Tabs
-                  orientation={isMobile ? 'horizontal' : 'vertical'}
-                  variant={isMobile ? 'scrollable' : 'standard'}
-                  scrollButtons={isMobile ? 'auto' : undefined}
-                  value={activeTab}
-                  onChange={(_, val) => setActiveTab(val)}
-                  sx={{
-                    borderRight: 0,
-                    '& .MuiTabs-indicator': {
-                      display: isMobile ? 'block' : 'none',
-                      bgcolor: 'primary.main',
-                      height: 3
-                    },
-                    '& .MuiTab-root': {
-                      alignItems: 'center',
-                      justifyContent: isMobile ? 'center' : 'flex-start',
-                      textTransform: 'none',
-                      textAlign: 'left',
-                      minHeight: 48,
-                      borderRadius: 2,
-                      mb: isMobile ? 0 : 0.5,
-                      mr: isMobile ? 1 : 0,
-                      fontSize: '0.875rem',
-                      fontWeight: 600,
-                      px: 2,
-                      color: 'text.secondary',
-                      '&.Mui-selected': {
-                        bgcolor: alpha('#4f46e5', 0.08),
-                        color: 'primary.main'
-                      },
-                      '&:hover': {
-                        bgcolor: alpha('#0f172a', 0.04)
-                      }
-                    }
-                  }}
-                >
-                  <Tab icon={<DashboardIcon sx={{ mr: isMobile ? 0.5 : 1.5, fontSize: 20 }} />} iconPosition="start" label="Dashboard" />
-                  <Tab icon={<AccountBalanceWalletIcon sx={{ mr: isMobile ? 0.5 : 1.5, fontSize: 20 }} />} iconPosition="start" label="Income & Expenses" />
-                  <Tab icon={<NotificationsActiveIcon sx={{ mr: isMobile ? 0.5 : 1.5, fontSize: 20 }} />} iconPosition="start" label="Budgets & Bills" />
-                  <Tab icon={<PriceCheckIcon sx={{ mr: isMobile ? 0.5 : 1.5, fontSize: 20 }} />} iconPosition="start" label="Loans & EMIs" />
-                  <Tab icon={<ShowChartIcon sx={{ mr: isMobile ? 0.5 : 1.5, fontSize: 20 }} />} iconPosition="start" label="Investments" />
-                  <Tab icon={<AccountBalanceIcon sx={{ mr: isMobile ? 0.5 : 1.5, fontSize: 20 }} />} iconPosition="start" label="Assets & Debts" />
-                  <Tab icon={<PeopleIcon sx={{ mr: isMobile ? 0.5 : 1.5, fontSize: 20 }} />} iconPosition="start" label="Family & Payments" />
-                  <Tab icon={<CameraAltIcon sx={{ mr: isMobile ? 0.5 : 1.5, fontSize: 20 }} />} iconPosition="start" label="Receipts & OCR" />
-                  <Tab icon={<AssessmentIcon sx={{ mr: isMobile ? 0.5 : 1.5, fontSize: 20 }} />} iconPosition="start" label="Reports & Exporter" />
-                  <Tab icon={<SettingsIcon sx={{ mr: isMobile ? 0.5 : 1.5, fontSize: 20 }} />} iconPosition="start" label="System Settings" />
-                </Tabs>
-              </Box>
-            </CardContent>
-          </Card>
-        </Box>
+              <Button
+                variant="outlined"
+                size="large"
+                startIcon={<AddIcon />}
+                onClick={() => { setSelectedIncome(null); setIncomeModalOpen(true); }}
+                sx={{
+                  py: 2.5,
+                  borderRadius: 3,
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  fontSize: '1rem',
+                  color: '#10b981',
+                  borderColor: alpha('#10b981', 0.3),
+                  bgcolor: alpha('#10b981', 0.02),
+                  '&:hover': {
+                    borderColor: '#10b981',
+                    bgcolor: alpha('#10b981', 0.08),
+                  }
+                }}
+              >
+                Log Income
+              </Button>
+              <Button
+                variant="outlined"
+                size="large"
+                startIcon={<AccountBalanceWalletIcon />}
+                onClick={() => setBalanceModalOpen(true)}
+                sx={{
+                  py: 2.5,
+                  borderRadius: 3,
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  fontSize: '1rem',
+                  color: '#4f46e5',
+                  borderColor: alpha('#4f46e5', 0.3),
+                  bgcolor: alpha('#4f46e5', 0.02),
+                  '&:hover': {
+                    borderColor: '#4f46e5',
+                    bgcolor: alpha('#4f46e5', 0.08),
+                  }
+                }}
+              >
+                Current Balance
+              </Button>
+            </Box>
 
-        {/* Right Side: Tab Contents wrapper */}
-        <Box sx={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
-          {/* TAB 0: DASHBOARD */}
-          {activeTab === 0 && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              {/* Core numbers grid */}
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' }, gap: 2 }}>
-                <Box>
-                  <Card sx={{ bgcolor: alpha('#10b981', 0.03), borderColor: alpha('#10b981', 0.15) }}>
-                    <CardContent sx={{ p: 2 }}>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>Total Income</Typography>
-                      <Typography variant="h5" sx={{ mt: 0.5, fontWeight: 800, color: '#10b981' }}>₹{dashboardStats.totalIncome.toLocaleString('en-IN')}</Typography>
-                    </CardContent>
-                  </Card>
-                </Box>
-                <Box>
-                  <Card sx={{ bgcolor: alpha('#ef4444', 0.03), borderColor: alpha('#ef4444', 0.15) }}>
-                    <CardContent sx={{ p: 2 }}>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>Total Expenses</Typography>
-                      <Typography variant="h5" sx={{ mt: 0.5, fontWeight: 800, color: '#ef4444' }}>₹{dashboardStats.totalExpenses.toLocaleString('en-IN')}</Typography>
-                    </CardContent>
-                  </Card>
-                </Box>
-                <Box>
-                  <Card sx={{ bgcolor: alpha('#4f46e5', 0.03), borderColor: alpha('#4f46e5', 0.15) }}>
-                    <CardContent sx={{ p: 2 }}>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>Current Balance</Typography>
-                      <Typography variant="h5" sx={{ mt: 0.5, fontWeight: 800, color: '#4f46e5' }}>₹{dashboardStats.currentBalance.toLocaleString('en-IN')}</Typography>
-                    </CardContent>
-                  </Card>
-                </Box>
-              </Box>
-
-              {/* Charts Row */}
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '8fr 4fr' }, gap: 3 }}>
-                <Box sx={{ minWidth: 0 }}>
-                  <Card sx={{ borderRadius: 3 }}>
-                    <CardContent sx={{ p: 2.5 }}>
-                      <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2 }}>Monthly Income vs Expense</Typography>
-                      <Box sx={{ width: '100%', height: 260, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        {mounted && (
-                          <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                              <Pie
-                                data={incomeVsExpensePieData}
-                                innerRadius={50}
-                                outerRadius={80}
-                                paddingAngle={3}
-                                dataKey="value"
-                              >
-                                {incomeVsExpensePieData.map((entry, index) => (
-                                  <Cell key={`cell-${index}`} fill={entry.color} />
-                                ))}
-                              </Pie>
-                              <ChartTooltip formatter={(value: any) => `₹${Number(value).toLocaleString('en-IN')}`} />
-                              <Legend wrapperStyle={{ fontSize: 12 }} />
-                            </PieChart>
-                          </ResponsiveContainer>
-                        )}
-                      </Box>
-                    </CardContent>
-                  </Card>
-                </Box>
-
-                <Box sx={{ minWidth: 0 }}>
-                  <Card sx={{ borderRadius: 3, height: '100%' }}>
-                    <CardContent sx={{ p: 2.5 }}>
-                      <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2 }}>Expense Category Share</Typography>
-                      <Box sx={{ width: '100%', height: 180, position: 'relative' }}>
-                        {categoryChartData.length === 0 ? (
-                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-                            <Typography variant="body2" color="text.secondary">No expense transactions recorded.</Typography>
-                          </Box>
-                        ) : (
-                          mounted && (
-                            <ResponsiveContainer width="100%" height="100%">
-                              <PieChart>
-                                <Pie
-                                  data={categoryChartData}
-                                  innerRadius={45}
-                                  outerRadius={65}
-                                  paddingAngle={3}
-                                  dataKey="value"
-                                >
-                                  {categoryChartData.map((_, index) => (
-                                    <Cell key={`cell-${index}`} fill={CATEGORY_COLORS[index % CATEGORY_COLORS.length]} />
-                                  ))}
-                                </Pie>
-                                <ChartTooltip formatter={(value: any) => `₹${Number(value).toLocaleString('en-IN')}`} />
-                              </PieChart>
-                            </ResponsiveContainer>
-                          )
-                        )}
-                      </Box>
-                      {/* Custom Category Legend */}
-                      <Box sx={{ mt: 1.5, maxHeight: 80, overflowY: 'auto', display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                        {categoryChartData.slice(0, 5).map((x, index) => (
-                          <Box key={x.name} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: CATEGORY_COLORS[index % CATEGORY_COLORS.length] }} />
-                            <Typography variant="caption" sx={{ fontSize: '0.675rem', fontWeight: 600 }}>{x.name} ({Math.round((x.value / dashboardStats.totalExpenses) * 100)}%)</Typography>
-                          </Box>
-                        ))}
-                      </Box>
-                    </CardContent>
-                  </Card>
-                </Box>
-              </Box>
-
-              {/* Extra widgets: Goal tracking & Trends */}
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 3 }}>
-                <Box sx={{ minWidth: 0 }}>
-                  <Card sx={{ borderRadius: 3 }}>
-                    <CardContent sx={{ p: 2.5 }}>
-                      <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2 }}>Savings Progress</Typography>
-                      <Stack spacing={2.5}>
-                        {goals.slice(0, 3).map((goal) => {
-                          const percent = Math.round((goal.currentAmount / goal.targetAmount) * 100);
-                          return (
-                            <Box key={goal.id}>
-                              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                                <Typography variant="body2" sx={{ fontWeight: 600 }}>{goal.goalName}</Typography>
-                                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>{percent}% (₹{goal.currentAmount.toLocaleString()} of ₹{goal.targetAmount.toLocaleString()})</Typography>
-                              </Box>
-                              <LinearProgress variant="determinate" value={percent} sx={{ height: 8, borderRadius: 4, bgcolor: alpha('#4f46e5', 0.1), '& .MuiLinearProgress-bar': { bgcolor: '#4f46e5' } }} />
-                            </Box>
-                          );
-                        })}
-                        {goals.length === 0 && (
-                          <Typography variant="body2" color="text.secondary" align="center">No savings goals tracked yet.</Typography>
-                        )}
-                      </Stack>
-                    </CardContent>
-                  </Card>
-                </Box>
-
-                <Box sx={{ minWidth: 0 }}>
-                  <Card sx={{ borderRadius: 3 }}>
-                    <CardContent sx={{ p: 2.5 }}>
-                      <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2 }}>Expense Trend (Current Month)</Typography>
-                      <Box sx={{ width: '100%', height: 180, position: 'relative' }}>
-                        {mounted && (
-                          <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={trendChartData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
-                              <XAxis dataKey="day" hide />
-                              <YAxis tick={{ fontSize: 10 }} />
-                              <ChartTooltip formatter={(value: any) => `₹${value}`} />
-                              <Line type="monotone" dataKey="amount" stroke="#4f46e5" strokeWidth={2.5} dot={false} />
-                            </LineChart>
-                          </ResponsiveContainer>
-                        )}
-                      </Box>
-                    </CardContent>
-                  </Card>
-                </Box>
-              </Box>
-
-              {/* Alerts & Bills */}
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 3 }}>
-                <Box sx={{ minWidth: 0 }}>
-                  <Card sx={{ borderRadius: 3 }}>
-                    <CardContent sx={{ p: 2.5 }}>
-                      <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <NotificationsIcon color="primary" /> Recent Alerts
-                      </Typography>
-                      <Stack spacing={1.5} sx={{ maxHeight: 220, overflowY: 'auto' }}>
-                        {notifications.slice(0, 5).map(n => (
-                          <Alert
-                            key={n.id}
-                            severity={n.type === 'budget' || n.type === 'emi' ? 'warning' : 'info'}
-                            sx={{ py: 0.5, px: 1.5, fontSize: '0.825rem' }}
-                            action={
-                              !n.read && (
-                                <IconButton size="small" onClick={() => { clarityHomeDb.markNotificationRead(n.id); refreshDb(); }}>
-                                  <CheckCircleIcon fontSize="small" />
-                                </IconButton>
-                              )
-                            }
+            {/* Charts Row */}
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '8fr 4fr' }, gap: 3 }}>
+              <Box sx={{ minWidth: 0 }}>
+                <Card sx={{ borderRadius: 3 }}>
+                  <CardContent sx={{ p: 2.5 }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2 }}>Monthly Income vs Expense</Typography>
+                    <Box sx={{ width: '100%', height: 260, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {mounted && (
+                        <PieChart width={320} height={260}>
+                          <Pie
+                            data={incomeVsExpensePieData}
+                            cx="50%"
+                            cy="45%"
+                            innerRadius={50}
+                            outerRadius={80}
+                            paddingAngle={3}
+                            dataKey="value"
                           >
-                            <strong>{n.title}</strong> — {n.message}
-                          </Alert>
-                        ))}
-                        {notifications.length === 0 && (
-                          <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 2 }}>No incoming system messages.</Typography>
-                        )}
-                      </Stack>
-                    </CardContent>
-                  </Card>
-                </Box>
-
-                <Box sx={{ minWidth: 0 }}>
-                  <Card sx={{ borderRadius: 3 }}>
-                    <CardContent sx={{ p: 2.5 }}>
-                      <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>Upcoming House Bills</Typography>
-                      <Stack spacing={1.5} sx={{ maxHeight: 220, overflowY: 'auto' }}>
-                        {bills.filter(b => b.status === 'Unpaid').map(b => (
-                          <Box key={b.id} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.25, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
-                            <Box>
-                              <Typography variant="body2" sx={{ fontWeight: 700 }}>{b.title}</Typography>
-                              <Typography variant="caption" color="text.secondary">Due on: {b.dueDate}</Typography>
-                            </Box>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                              <Typography variant="body2" sx={{ fontWeight: 800 }} color="error.main">₹{b.amount}</Typography>
-                              <Button
-                                size="small"
-                                onClick={() => {
-                                  clarityHomeDb.updateBill(b.id, { status: 'Paid' });
-                                  triggerToast(`Marked ${b.title} bill paid!`);
-                                  refreshDb();
-                                }}
-                              >
-                                Mark Paid
-                              </Button>
-                            </Box>
-                          </Box>
-                        ))}
-                        {bills.filter(b => b.status === 'Unpaid').length === 0 && (
-                          <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 2 }}>All bills paid. Zero outstanding.</Typography>
-                        )}
-                      </Stack>
-                    </CardContent>
-                  </Card>
-                </Box>
-              </Box>
-            </Box>
-          )}
-
-          {/* TAB 1: INCOME & EXPENSES */}
-          {activeTab === 1 && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              {/* Header Action Row */}
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 2 }}>
-                <Typography variant="h6" sx={{ fontWeight: 700 }}>Household Ledgers</Typography>
-                <Stack direction="row" spacing={1.5}>
-                  <Button variant="outlined" startIcon={<AddIcon />} color="success" onClick={() => { setSelectedIncome(null); setIncomeModalOpen(true); }}>
-                    Log Income
-                  </Button>
-                  <Button startIcon={<AddIcon />} onClick={() => { setSelectedExpense(null); setExpenseModalOpen(true); }}>
-                    Log Expense
-                  </Button>
-                </Stack>
-              </Box>
-
-              {/* Filtering row */}
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '3fr repeat(4, 2.25fr)' }, gap: 2, mb: 1 }}>
-                <Box>
-                  <TextField
-                    fullWidth
-                    placeholder="Search logs..."
-                    value={globalSearch}
-                    onChange={(e) => setGlobalSearch(e.target.value)}
-                  />
-                </Box>
-                <Box>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Category</InputLabel>
-                    <Select value={expenseFilterCategory} label="Category" onChange={(e) => setExpenseFilterCategory(e.target.value)}>
-                      <MenuItem value="All">All Categories</MenuItem>
-                      <MenuItem value="Salary">Salary</MenuItem>
-                      <MenuItem value="Business">Business</MenuItem>
-                      <MenuItem value="Freelancing">Freelancing</MenuItem>
-                      <MenuItem value="Rent">Rent</MenuItem>
-                      <MenuItem value="Groceries">Groceries</MenuItem>
-                      <MenuItem value="Electricity">Electricity</MenuItem>
-                      <MenuItem value="Shopping">Shopping</MenuItem>
-                      <MenuItem value="Entertainment">Entertainment</MenuItem>
-                      <MenuItem value="Miscellaneous">Miscellaneous</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Box>
-                <Box>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Family Member</InputLabel>
-                    <Select value={expenseFilterFamily} label="Family Member" onChange={(e) => setExpenseFilterFamily(e.target.value)}>
-                      <MenuItem value="All">All Members</MenuItem>
-                      <MenuItem value="Self">Self</MenuItem>
-                      <MenuItem value="Wife">Wife</MenuItem>
-                      <MenuItem value="Daughter">Daughter</MenuItem>
-                      <MenuItem value="Father">Father</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Box>
-                <Box>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Payment Channel</InputLabel>
-                    <Select value={expenseFilterPayment} label="Payment Channel" onChange={(e) => setExpenseFilterPayment(e.target.value)}>
-                      <MenuItem value="All">All Channels</MenuItem>
-                      <MenuItem value="Cash">Cash</MenuItem>
-                      <MenuItem value="UPI">UPI</MenuItem>
-                      <MenuItem value="Credit Card">Credit Card</MenuItem>
-                      <MenuItem value="Debit Card">Debit Card</MenuItem>
-                      <MenuItem value="Bank Transfer">Bank Transfer</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Box>
-                <Box>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Expense Type</InputLabel>
-                    <Select value={expenseFilterType} label="Expense Type" onChange={(e) => setExpenseFilterType(e.target.value)}>
-                      <MenuItem value="All">All Expenses</MenuItem>
-                      <MenuItem value="Personal">Personal</MenuItem>
-                      <MenuItem value="Business">Business</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Box>
-              </Box>
-
-              {/* Transactions Table */}
-              <Card sx={{ borderRadius: 3, overflow: 'hidden', width: '100%', maxWidth: '100%', minWidth: 0 }}>
-                <Box sx={{ overflowX: 'auto', width: '100%', WebkitOverflowScrolling: 'touch' }}>
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Date</TableCell>
-                        <TableCell>Description/Name</TableCell>
-                        <TableCell>Category</TableCell>
-                        <TableCell>Amount</TableCell>
-                        <TableCell>Channel</TableCell>
-                        <TableCell>Tags / Details</TableCell>
-                        <TableCell align="right">Actions</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {filteredTransactions.map((item) => {
-                        const isInc = 'title' in item;
-                        const name = isInc ? item.title : item.expenseName;
-                        const amountColor = isInc ? 'success.main' : 'error.main';
-                        const prefix = isInc ? '+' : '-';
-
-                        return (
-                          <TableRow key={item.id} hover>
-                            <TableCell sx={{ fontSize: '0.85rem' }}>{item.date}</TableCell>
-                            <TableCell sx={{ fontWeight: 700 }}>
-                              {name}
-                              {!isInc && item.vendor && (
-                                <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
-                                  Vendor: {item.vendor}
-                                </Typography>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <Chip
-                                label={item.category}
-                                size="small"
-                                variant="outlined"
-                                sx={{
-                                  borderColor: isInc ? '#10b981' : '#ec4899',
-                                  color: isInc ? '#10b981' : '#ec4899',
-                                  fontWeight: 600
-                                }}
-                              />
-                            </TableCell>
-                            <TableCell sx={{ fontWeight: 800, color: amountColor }}>
-                              {prefix}₹{item.amount.toLocaleString('en-IN')}
-                            </TableCell>
-                            <TableCell sx={{ fontSize: '0.85rem' }}>{item.paymentMethod}</TableCell>
-                            <TableCell>
-                              {!isInc && item.isBusiness && (
-                                <Chip label="Business" color="warning" size="small" sx={{ mr: 0.5, height: 18, fontSize: '0.65rem' }} />
-                              )}
-                              {!isInc && item.familyMember && (
-                                <Chip label={item.familyMember} color="primary" variant="outlined" size="small" sx={{ mr: 0.5, height: 18, fontSize: '0.65rem' }} />
-                              )}
-                              {!isInc && item.tags?.map(t => (
-                                <Chip key={t} label={`#${t}`} size="small" sx={{ mr: 0.5, height: 18, fontSize: '0.65rem', bgcolor: 'action.hover' }} />
-                              ))}
-                            </TableCell>
-                            <TableCell align="right">
-                              <Stack direction="row" sx={{ justifyContent: 'flex-end', gap: 0.5 }}>
-                                {!isInc && (
-                                  <Tooltip title="Duplicate">
-                                    <IconButton
-                                      size="small"
-                                      onClick={() => {
-                                        clarityHomeDb.duplicateExpense(item.id);
-                                        triggerToast('Expense entry duplicated.');
-                                        refreshDb();
-                                      }}
-                                    >
-                                      <ContentCopyIcon fontSize="small" />
-                                    </IconButton>
-                                  </Tooltip>
-                                )}
-                                <IconButton
-                                  size="small"
-                                  onClick={() => {
-                                    if (isInc) {
-                                      setSelectedIncome(item);
-                                      setIncomeForm(item);
-                                      setIncomeModalOpen(true);
-                                    } else {
-                                      setSelectedExpense(item);
-                                      setExpenseForm(item);
-                                      setExpenseModalOpen(true);
-                                    }
-                                  }}
-                                >
-                                  <EditIcon fontSize="small" />
-                                </IconButton>
-                                <IconButton
-                                  size="small"
-                                  color="error"
-                                  onClick={() => {
-                                    if (isInc) {
-                                      clarityHomeDb.deleteIncome(item.id);
-                                      triggerToast('Income log removed.');
-                                    } else {
-                                      clarityHomeDb.deleteExpense(item.id);
-                                      triggerToast('Expense log removed.');
-                                    }
-                                    refreshDb();
-                                  }}
-                                >
-                                  <DeleteIcon fontSize="small" />
-                                </IconButton>
-                              </Stack>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                      {filteredTransactions.length === 0 && (
-                        <TableRow>
-                          <TableCell colSpan={7} align="center" sx={{ py: 6, color: 'text.secondary' }}>
-                            No transactions found matching active parameters.
-                          </TableCell>
-                        </TableRow>
+                            {incomeVsExpensePieData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <ChartTooltip formatter={(value: any) => `₹${Number(value).toLocaleString('en-IN')}`} />
+                          <Legend wrapperStyle={{ fontSize: 12 }} />
+                        </PieChart>
                       )}
-                    </TableBody>
-                  </Table>
-                </Box>
-              </Card>
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Box>
+
+              <Box sx={{ minWidth: 0 }}>
+                <Card sx={{ borderRadius: 3, height: '100%' }}>
+                  <CardContent sx={{ p: 2.5 }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2 }}>Expense Category Share</Typography>
+                    <Box sx={{ width: '100%', height: 180, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {categoryChartData.length === 0 ? (
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                          <Typography variant="body2" color="text.secondary">No expense transactions recorded.</Typography>
+                        </Box>
+                      ) : (
+                        mounted && (
+                          <PieChart width={220} height={180}>
+                            <Pie
+                              data={categoryChartData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={45}
+                              outerRadius={65}
+                              paddingAngle={3}
+                              dataKey="value"
+                            >
+                              {categoryChartData.map((_, index) => (
+                                <Cell key={`cell-${index}`} fill={CATEGORY_COLORS[index % CATEGORY_COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <ChartTooltip formatter={(value: any) => `₹${Number(value).toLocaleString('en-IN')}`} />
+                          </PieChart>
+                        )
+                      )}
+                    </Box>
+                    {/* Custom Category Legend */}
+                    <Box sx={{ mt: 1.5, maxHeight: 80, overflowY: 'auto', display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                      {categoryChartData.slice(0, 5).map((x, index) => (
+                        <Box key={x.name} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: CATEGORY_COLORS[index % CATEGORY_COLORS.length] }} />
+                          <Typography variant="caption" sx={{ fontSize: '0.675rem', fontWeight: 600 }}>{x.name} ({Math.round((x.value / dashboardStats.totalExpenses) * 100)}%)</Typography>
+                        </Box>
+                      ))}
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Box>
             </Box>
-          )}
+          </Box>
+        )}
 
-          {/* TAB 2: BUDGETS & BILLS */}
-          {activeTab === 2 && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {/* Budgets Section */}
+        {/* TAB 1: INCOME & EXPENSES */}
+        {activeTab === 1 && (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {/* Header Action Row */}
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>Household Ledgers</Typography>
+              <Stack direction="row" spacing={1.5}>
+                <Button variant="outlined" startIcon={<AddIcon />} color="success" onClick={() => { setSelectedIncome(null); setIncomeModalOpen(true); }}>
+                  Log Income
+                </Button>
+                <Button startIcon={<AddIcon />} onClick={() => { setSelectedExpense(null); setExpenseModalOpen(true); }}>
+                  Log Expense
+                </Button>
+              </Stack>
+            </Box>
+
+            {/* Filtering row */}
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '3fr repeat(4, 2.25fr)' }, gap: 2, mb: 1 }}>
               <Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                  <Typography variant="h6" sx={{ fontWeight: 700 }}>Category Monthly Budgets</Typography>
-                  <Button startIcon={<AddIcon />} onClick={() => setBudgetModalOpen(true)}>Configure Budget</Button>
-                </Box>
+                <TextField
+                  fullWidth
+                  placeholder="Search logs..."
+                  value={globalSearch}
+                  onChange={(e) => setGlobalSearch(e.target.value)}
+                />
+              </Box>
+              <Box>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Category</InputLabel>
+                  <Select value={expenseFilterCategory} label="Category" onChange={(e) => setExpenseFilterCategory(e.target.value)}>
+                    <MenuItem value="All">All Categories</MenuItem>
+                    <MenuItem value="Salary">Salary</MenuItem>
+                    <MenuItem value="Business">Business</MenuItem>
+                    <MenuItem value="Freelancing">Freelancing</MenuItem>
+                    <MenuItem value="Rent">Rent</MenuItem>
+                    <MenuItem value="Groceries">Groceries</MenuItem>
+                    <MenuItem value="Electricity">Electricity</MenuItem>
+                    <MenuItem value="Shopping">Shopping</MenuItem>
+                    <MenuItem value="Entertainment">Entertainment</MenuItem>
+                    <MenuItem value="Miscellaneous">Miscellaneous</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
+              <Box>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Family Member</InputLabel>
+                  <Select value={expenseFilterFamily} label="Family Member" onChange={(e) => setExpenseFilterFamily(e.target.value)}>
+                    <MenuItem value="All">All Members</MenuItem>
+                    <MenuItem value="Self">Self</MenuItem>
+                    <MenuItem value="Wife">Wife</MenuItem>
+                    <MenuItem value="Daughter">Daughter</MenuItem>
+                    <MenuItem value="Father">Father</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
+              <Box>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Payment Channel</InputLabel>
+                  <Select value={expenseFilterPayment} label="Payment Channel" onChange={(e) => setExpenseFilterPayment(e.target.value)}>
+                    <MenuItem value="All">All Channels</MenuItem>
+                    <MenuItem value="Cash">Cash</MenuItem>
+                    <MenuItem value="UPI">UPI</MenuItem>
+                    <MenuItem value="Credit Card">Credit Card</MenuItem>
+                    <MenuItem value="Debit Card">Debit Card</MenuItem>
+                    <MenuItem value="Bank Transfer">Bank Transfer</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
+              <Box>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Expense Type</InputLabel>
+                  <Select value={expenseFilterType} label="Expense Type" onChange={(e) => setExpenseFilterType(e.target.value)}>
+                    <MenuItem value="All">All Expenses</MenuItem>
+                    <MenuItem value="Personal">Personal</MenuItem>
+                    <MenuItem value="Business">Business</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
+            </Box>
 
-                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(3, 1fr)' }, gap: 3 }}>
-                  {budgets.map(b => {
-                    const spent = expenses
-                      .filter(e => e.category === b.category && new Date(e.date).getMonth() + 1 === b.month)
-                      .reduce((sum, e) => sum + e.amount, 0);
-                    const percent = Math.min(100, Math.round((spent / b.amount) * 100));
-                    const isExceeded = spent > b.amount;
+            {/* Transactions Table */}
+            <Card sx={{ borderRadius: 3, overflow: 'hidden', width: '100%', maxWidth: '100%', minWidth: 0 }}>
+              <Box sx={{ overflowX: 'auto', width: '100%', WebkitOverflowScrolling: 'touch' }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Date</TableCell>
+                      <TableCell>Description/Name</TableCell>
+                      <TableCell>Category</TableCell>
+                      <TableCell>Amount</TableCell>
+                      <TableCell>Channel</TableCell>
+                      <TableCell>Tags / Details</TableCell>
+                      <TableCell align="right">Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {filteredTransactions.map((item) => {
+                      const isInc = 'title' in item;
+                      const name = isInc ? item.title : item.expenseName;
+                      const amountColor = isInc ? 'success.main' : 'error.main';
+                      const prefix = isInc ? '+' : '-';
 
-                    return (
-                      <Box key={b.id}>
-                        <Card sx={{ borderLeft: '4px solid', borderLeftColor: isExceeded ? 'error.main' : 'primary.main' }}>
-                          <CardContent sx={{ p: 2 }}>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                              <Typography sx={{ fontWeight: 700 }}>{b.category}</Typography>
-                              <Chip
-                                label={isExceeded ? 'Exceeded' : 'Active'}
-                                color={isExceeded ? 'error' : 'success'}
-                                size="small"
-                              />
-                            </Box>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1.5 }}>
-                              <Typography variant="body2" color="text.secondary">Spent: ₹{spent.toLocaleString()}</Typography>
-                              <Typography variant="body2" sx={{ fontWeight: 600 }}>Limit: ₹{b.amount.toLocaleString()}</Typography>
-                            </Box>
-                            <LinearProgress
-                              variant="determinate"
-                              value={percent}
+                      return (
+                        <TableRow key={item.id} hover>
+                          <TableCell sx={{ fontSize: '0.85rem' }}>{item.date}</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}>
+                            {name}
+                            {!isInc && item.vendor && (
+                              <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
+                                Vendor: {item.vendor}
+                              </Typography>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              label={item.category}
+                              size="small"
+                              variant="outlined"
                               sx={{
-                                height: 6,
-                                borderRadius: 3,
-                                bgcolor: 'action.hover',
-                                '& .MuiLinearProgress-bar': { bgcolor: isExceeded ? 'error.main' : 'primary.main' }
+                                borderColor: isInc ? '#10b981' : '#ec4899',
+                                color: isInc ? '#10b981' : '#ec4899',
+                                fontWeight: 600
                               }}
                             />
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1.5 }}>
-                              <Typography variant="caption" color="text.secondary">{b.month}/{b.year}</Typography>
+                          </TableCell>
+                          <TableCell sx={{ fontWeight: 800, color: amountColor }}>
+                            {prefix}₹{item.amount.toLocaleString('en-IN')}
+                          </TableCell>
+                          <TableCell sx={{ fontSize: '0.85rem' }}>{item.paymentMethod}</TableCell>
+                          <TableCell>
+                            {!isInc && item.isBusiness && (
+                              <Chip label="Business" color="warning" size="small" sx={{ mr: 0.5, height: 18, fontSize: '0.65rem' }} />
+                            )}
+                            {!isInc && item.familyMember && (
+                              <Chip label={item.familyMember} color="primary" variant="outlined" size="small" sx={{ mr: 0.5, height: 18, fontSize: '0.65rem' }} />
+                            )}
+                            {!isInc && item.tags?.map(t => (
+                              <Chip key={t} label={`#${t}`} size="small" sx={{ mr: 0.5, height: 18, fontSize: '0.65rem', bgcolor: 'action.hover' }} />
+                            ))}
+                          </TableCell>
+                          <TableCell align="right">
+                            <Stack direction="row" sx={{ justifyContent: 'flex-end', gap: 0.5 }}>
+                              {!isInc && (
+                                <Tooltip title="Duplicate">
+                                  <IconButton
+                                    size="small"
+                                    onClick={() => {
+                                      clarityHomeDb.duplicateExpense(item.id);
+                                      triggerToast('Expense entry duplicated.');
+                                      refreshDb();
+                                    }}
+                                  >
+                                    <ContentCopyIcon fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                              )}
+                              <IconButton
+                                size="small"
+                                onClick={() => {
+                                  if (isInc) {
+                                    setSelectedIncome(item);
+                                    setIncomeForm(item);
+                                    setIncomeModalOpen(true);
+                                  } else {
+                                    setSelectedExpense(item);
+                                    setExpenseForm(item);
+                                    setExpenseModalOpen(true);
+                                  }
+                                }}
+                              >
+                                <EditIcon fontSize="small" />
+                              </IconButton>
                               <IconButton
                                 size="small"
                                 color="error"
                                 onClick={() => {
-                                  clarityHomeDb.deleteBudget(b.id);
-                                  triggerToast('Budget limit cleared.');
+                                  if (isInc) {
+                                    clarityHomeDb.deleteIncome(item.id);
+                                    triggerToast('Income log removed.');
+                                  } else {
+                                    clarityHomeDb.deleteExpense(item.id);
+                                    triggerToast('Expense log removed.');
+                                  }
                                   refreshDb();
                                 }}
                               >
                                 <DeleteIcon fontSize="small" />
                               </IconButton>
-                            </Box>
-                          </CardContent>
-                        </Card>
-                      </Box>
-                    );
-                  })}
-                  {budgets.length === 0 && (
-                    <Box sx={{ gridColumn: 'span 12' }}>
-                      <Alert severity="info">Configure spending limits above to prevent budget leaks and receive dashboard over-run alerts.</Alert>
-                    </Box>
-                  )}
-                </Box>
-              </Box>
-
-              {/* Bills Checklist */}
-              <Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                  <Typography variant="h6" sx={{ fontWeight: 700 }}>Recurring House Utility Bills</Typography>
-                  <Button startIcon={<AddIcon />} onClick={() => setBillModalOpen(true)}>Create Bill Tracker</Button>
-                </Box>
-
-                <Card sx={{ borderRadius: 3, overflow: 'hidden', width: '100%', maxWidth: '100%', minWidth: 0 }}>
-                  <Box sx={{ overflowX: 'auto', width: '100%', WebkitOverflowScrolling: 'touch' }}>
-                    <Table size="small">
-                      <TableHead>
-                        <TableRow>
-                          <TableCell>Bill Service</TableCell>
-                          <TableCell>Category</TableCell>
-                          <TableCell>Due Date</TableCell>
-                          <TableCell>Amount</TableCell>
-                          <TableCell>Autopay</TableCell>
-                          <TableCell>Status</TableCell>
-                          <TableCell align="right">Actions</TableCell>
+                            </Stack>
+                          </TableCell>
                         </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {bills.map(b => (
-                          <TableRow key={b.id}>
-                            <TableCell sx={{ fontWeight: 700 }}>{b.title}</TableCell>
-                            <TableCell>{b.category}</TableCell>
-                            <TableCell>{b.dueDate}</TableCell>
-                            <TableCell sx={{ fontWeight: 800 }}>₹{b.amount.toLocaleString()}</TableCell>
-                            <TableCell>
-                              <Chip
-                                label={b.autoRecurring ? 'Autopay ON' : 'Manual'}
-                                size="small"
-                                color={b.autoRecurring ? 'primary' : 'default'}
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <Chip
-                                label={b.status}
-                                color={b.status === 'Paid' ? 'success' : 'warning'}
-                                size="small"
-                              />
-                            </TableCell>
-                            <TableCell align="right">
-                              <Stack direction="row" sx={{ justifyContent: 'flex-end', gap: 0.5 }}>
-                                {b.status === 'Unpaid' && (
-                                  <Button
-                                    size="small"
-                                    onClick={() => {
-                                      clarityHomeDb.updateBill(b.id, { status: 'Paid' });
-                                      triggerToast(`${b.title} Bill payment recorded.`);
-                                      refreshDb();
-                                    }}
-                                  >
-                                    Mark Paid
-                                  </Button>
-                                )}
-                                <IconButton
-                                  size="small"
-                                  color="error"
-                                  onClick={() => {
-                                    clarityHomeDb.deleteBill(b.id);
-                                    triggerToast('Utility tracker deleted.');
-                                    refreshDb();
-                                  }}
-                                >
-                                  <DeleteIcon fontSize="small" />
-                                </IconButton>
-                              </Stack>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                        {bills.length === 0 && (
-                          <TableRow>
-                            <TableCell colSpan={7} align="center" sx={{ py: 4, color: 'text.secondary' }}>
-                              No household bills configured. Add water, power, or internet bills.
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
-                  </Box>
-                </Card>
+                      );
+                    })}
+                    {filteredTransactions.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={7} align="center" sx={{ py: 6, color: 'text.secondary' }}>
+                          No transactions found matching active parameters.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
               </Box>
-            </Box>
-          )}
+            </Card>
+          </Box>
+        )}
 
-          {/* TAB 3: LOANS & EMIS */}
-          {activeTab === 3 && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="h6" sx={{ fontWeight: 700 }}>EMI & Loan Management</Typography>
-                <Button startIcon={<AddIcon />} onClick={() => setLoanModalOpen(true)}>Add Loan Tracker</Button>
+        {/* TAB 2: BUDGETS & BILLS */}
+        {activeTab === 2 && (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {/* Budgets Section */}
+            <Box>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>Category Monthly Budgets</Typography>
+                <Button startIcon={<AddIcon />} onClick={() => setBudgetModalOpen(true)}>Configure Budget</Button>
               </Box>
 
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 3 }}>
-                {loans.map(loan => (
-                  <Box key={loan.id}>
-                    <Card sx={{ borderRadius: 3, border: '1px solid', borderColor: 'divider' }}>
-                      <CardContent sx={{ p: 2.5 }}>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1.5 }}>
-                          <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{loan.loanName}</Typography>
-                          <Chip label={loan.loanType} size="small" color="primary" variant="outlined" />
-                        </Box>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(3, 1fr)' }, gap: 3 }}>
+                {budgets.map(b => {
+                  const spent = expenses
+                    .filter(e => e.category === b.category && new Date(e.date).getMonth() + 1 === b.month)
+                    .reduce((sum, e) => sum + e.amount, 0);
+                  const percent = Math.min(100, Math.round((spent / b.amount) * 100));
+                  const isExceeded = spent > b.amount;
 
-                        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 2 }}>
-                          <Box>
-                            <Typography variant="caption" color="text.secondary">Total Loan</Typography>
-                            <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>₹{loan.loanAmount.toLocaleString()}</Typography>
+                  return (
+                    <Box key={b.id}>
+                      <Card sx={{ borderLeft: '4px solid', borderLeftColor: isExceeded ? 'error.main' : 'primary.main' }}>
+                        <CardContent sx={{ p: 2 }}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                            <Typography sx={{ fontWeight: 700 }}>{b.category}</Typography>
+                            <Chip
+                              label={isExceeded ? 'Exceeded' : 'Active'}
+                              color={isExceeded ? 'error' : 'success'}
+                              size="small"
+                            />
                           </Box>
-                          <Box>
-                            <Typography variant="caption" color="text.secondary">Remaining Principal</Typography>
-                            <Typography variant="subtitle1" sx={{ fontWeight: 800, color: 'primary.main' }}>₹{loan.remainingBalance.toLocaleString()}</Typography>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1.5 }}>
+                            <Typography variant="body2" color="text.secondary">Spent: ₹{spent.toLocaleString()}</Typography>
+                            <Typography variant="body2" sx={{ fontWeight: 600 }}>Limit: ₹{b.amount.toLocaleString()}</Typography>
                           </Box>
-                          <Box>
-                            <Typography variant="caption" color="text.secondary">Interest Rate</Typography>
-                            <Typography variant="body2" sx={{ fontWeight: 700 }}>{loan.interestRate}% P.A.</Typography>
-                          </Box>
-                          <Box>
-                            <Typography variant="caption" color="text.secondary">Monthly EMI</Typography>
-                            <Typography variant="body2" sx={{ fontWeight: 800, color: 'error.main' }}>₹{loan.emiAmount.toLocaleString()}</Typography>
-                          </Box>
-                        </Box>
-
-                        <Box sx={{ mb: 2 }}>
-                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>Amortization Progress</Typography>
                           <LinearProgress
                             variant="determinate"
-                            value={Math.round(((loan.loanAmount - loan.remainingBalance) / loan.loanAmount) * 100)}
-                            sx={{ height: 8, borderRadius: 4 }}
+                            value={percent}
+                            sx={{
+                              height: 6,
+                              borderRadius: 3,
+                              bgcolor: 'action.hover',
+                              '& .MuiLinearProgress-bar': { bgcolor: isExceeded ? 'error.main' : 'primary.main' }
+                            }}
                           />
-                        </Box>
-
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <Typography variant="caption" color="text.secondary">Next Due: {loan.dueDate}</Typography>
-                          <Stack direction="row" spacing={1}>
-                            <Button
-                              size="small"
-                              variant="contained"
-                              onClick={() => {
-                                clarityHomeDb.payLoanEMI(loan.id);
-                                triggerToast('EMI payment logged in history ledger.');
-                                refreshDb();
-                              }}
-                            >
-                              Pay EMI
-                            </Button>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1.5 }}>
+                            <Typography variant="caption" color="text.secondary">{b.month}/{b.year}</Typography>
                             <IconButton
                               size="small"
                               color="error"
                               onClick={() => {
-                                clarityHomeDb.deleteLoan(loan.id);
-                                triggerToast('Loan ledger deleted.');
-                                refreshDb();
-                              }}
-                            >
-                              <DeleteIcon fontSize="small" />
-                            </IconButton>
-                          </Stack>
-                        </Box>
-                      </CardContent>
-                    </Card>
-                  </Box>
-                ))}
-                {loans.length === 0 && (
-                  <Box sx={{ gridColumn: 'span 12' }}>
-                    <Alert severity="info">Register car loans, house loans, or personal EMIs to keep net-worth calculations balanced.</Alert>
-                  </Box>
-                )}
-              </Box>
-            </Box>
-          )}
-
-          {/* TAB 4: INVESTMENTS */}
-          {activeTab === 4 && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="h6" sx={{ fontWeight: 700 }}>Wealth Portfolio Tracker</Typography>
-                <Button startIcon={<AddIcon />} onClick={() => setInvestmentModalOpen(true)}>Add Asset Investment</Button>
-              </Box>
-
-              {/* Total portfolio widget */}
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 1fr' }, gap: 2 }}>
-                <Box>
-                  <Card>
-                    <CardContent sx={{ p: 2 }}>
-                      <Typography variant="caption" color="text.secondary">Total Invested Principal</Typography>
-                      <Typography variant="h6" sx={{ fontWeight: 800 }}>
-                        ₹{investments.reduce((s, x) => s + x.investedAmount, 0).toLocaleString()}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Box>
-                <Box>
-                  <Card>
-                    <CardContent sx={{ p: 2 }}>
-                      <Typography variant="caption" color="text.secondary">Current Valuation</Typography>
-                      <Typography variant="h6" sx={{ fontWeight: 800, color: 'primary.main' }}>
-                        ₹{investments.reduce((s, x) => s + x.currentValue, 0).toLocaleString()}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Box>
-                <Box>
-                  <Card>
-                    <CardContent sx={{ p: 2 }}>
-                      <Typography variant="caption" color="text.secondary">Unrealized Profit/Loss</Typography>
-                      {(() => {
-                        const inv = investments.reduce((s, x) => s + x.investedAmount, 0);
-                        const cur = investments.reduce((s, x) => s + x.currentValue, 0);
-                        const gain = cur - inv;
-                        const percent = inv > 0 ? ((cur - inv) / inv) * 100 : 0;
-                        const color = gain >= 0 ? 'success.main' : 'error.main';
-
-                        return (
-                          <Typography variant="h6" sx={{ fontWeight: 800, color: color }}>
-                            {gain >= 0 ? '+' : ''}₹{gain.toLocaleString()} ({percent.toFixed(1)}%)
-                          </Typography>
-                        );
-                      })()}
-                    </CardContent>
-                  </Card>
-                </Box>
-              </Box>
-
-              {/* Investments Table */}
-              <Card sx={{ borderRadius: 3, overflow: 'hidden', width: '100%', maxWidth: '100%', minWidth: 0 }}>
-                <Box sx={{ overflowX: 'auto', width: '100%', WebkitOverflowScrolling: 'touch' }}>
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Asset/SIP Name</TableCell>
-                        <TableCell>Category Type</TableCell>
-                        <TableCell>Invested Amount</TableCell>
-                        <TableCell>Current Value</TableCell>
-                        <TableCell>Net Returns</TableCell>
-                        <TableCell>Hold Period Date</TableCell>
-                        <TableCell align="right">Actions</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {investments.map(i => {
-                        const returns = i.currentValue - i.investedAmount;
-                        const returnsColor = returns >= 0 ? 'success.main' : 'error.main';
-                        return (
-                          <TableRow key={i.id}>
-                            <TableCell sx={{ fontWeight: 700 }}>{i.name}</TableCell>
-                            <TableCell>
-                              <Chip label={i.type} size="small" variant="outlined" />
-                            </TableCell>
-                            <TableCell sx={{ fontWeight: 600 }}>₹{i.investedAmount.toLocaleString()}</TableCell>
-                            <TableCell sx={{ fontWeight: 600 }}>₹{i.currentValue.toLocaleString()}</TableCell>
-                            <TableCell sx={{ fontWeight: 800, color: returnsColor }}>
-                              {returns >= 0 ? '+' : ''}₹{returns.toLocaleString()}
-                            </TableCell>
-                            <TableCell sx={{ fontSize: '0.85rem' }}>{i.purchaseDate}</TableCell>
-                            <TableCell align="right">
-                              <Stack direction="row" sx={{ justifyContent: 'flex-end', gap: 0.5 }}>
-                                <IconButton
-                                  size="small"
-                                  onClick={() => {
-                                    const newVal = prompt('Enter updated current valuation: ', String(i.currentValue));
-                                    if (newVal) {
-                                      clarityHomeDb.updateInvestment(i.id, { currentValue: Number(newVal) });
-                                      triggerToast('Investment value updated.');
-                                      refreshDb();
-                                    }
-                                  }}
-                                >
-                                  <RefreshIcon fontSize="small" />
-                                </IconButton>
-                                <IconButton
-                                  size="small"
-                                  color="error"
-                                  onClick={() => {
-                                    clarityHomeDb.deleteInvestment(i.id);
-                                    triggerToast('Investment entry cleared.');
-                                    refreshDb();
-                                  }}
-                                >
-                                  <DeleteIcon fontSize="small" />
-                                </IconButton>
-                              </Stack>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </Box>
-              </Card>
-            </Box>
-          )}
-
-          {/* TAB 5: ASSETS & DEBTS */}
-          {activeTab === 5 && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {/* Assets Section */}
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography variant="h6" sx={{ fontWeight: 700 }}>Physical & Capital Assets</Typography>
-                  <Button startIcon={<AddIcon />} onClick={() => setAssetModalOpen(true)}>Register Asset</Button>
-                </Box>
-
-                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(4, 1fr)' }, gap: 3 }}>
-                  {assets.map(ast => (
-                    <Box key={ast.id}>
-                      <Card sx={{ bgcolor: 'action.hover' }}>
-                        <CardContent sx={{ p: 2 }}>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>{ast.assetType}</Typography>
-                          <Typography variant="subtitle1" sx={{ fontWeight: 700, mt: 0.5, mb: 1.5 }}>{ast.name}</Typography>
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>₹{ast.estimatedValue.toLocaleString()}</Typography>
-                            <IconButton
-                              size="small"
-                              color="error"
-                              onClick={() => {
-                                clarityHomeDb.deleteAsset(ast.id);
-                                triggerToast('Asset removed.');
+                                clarityHomeDb.deleteBudget(b.id);
+                                triggerToast('Budget limit cleared.');
                                 refreshDb();
                               }}
                             >
@@ -1557,320 +1188,339 @@ export default function ClarityHomePage() {
                         </CardContent>
                       </Card>
                     </Box>
-                  ))}
-                </Box>
+                  );
+                })}
+                {budgets.length === 0 && (
+                  <Box sx={{ gridColumn: 'span 12' }}>
+                    <Alert severity="info">Configure spending limits above to prevent budget leaks and receive dashboard over-run alerts.</Alert>
+                  </Box>
+                )}
+              </Box>
+            </Box>
+
+            {/* Bills Checklist */}
+            <Box>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>Recurring House Utility Bills</Typography>
+                <Button startIcon={<AddIcon />} onClick={() => setBillModalOpen(true)}>Create Bill Tracker</Button>
               </Box>
 
-              {/* Debts section */}
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography variant="h6" sx={{ fontWeight: 700 }}>Debts Ledger (Borrowed & Lent)</Typography>
-                  <Button startIcon={<AddIcon />} onClick={() => setDebtModalOpen(true)}>Add Debt entry</Button>
-                </Box>
-
-                <Card sx={{ borderRadius: 3, overflow: 'hidden', width: '100%', maxWidth: '100%', minWidth: 0 }}>
-                  <Box sx={{ overflowX: 'auto', width: '100%', WebkitOverflowScrolling: 'touch' }}>
-                    <Table size="small">
-                      <TableHead>
-                        <TableRow>
-                          <TableCell>Person Name</TableCell>
-                          <TableCell>Relation Type</TableCell>
-                          <TableCell>Due Date</TableCell>
-                          <TableCell>Amount</TableCell>
-                          <TableCell>Interest Rate</TableCell>
-                          <TableCell>Status</TableCell>
-                          <TableCell align="right">Actions</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {debts.map(d => (
-                          <TableRow key={d.id}>
-                            <TableCell sx={{ fontWeight: 700 }}>{d.personName}</TableCell>
-                            <TableCell>
-                              <Chip
-                                label={d.type === 'borrowed' ? 'Borrowed' : 'Lent Money'}
-                                color={d.type === 'borrowed' ? 'error' : 'success'}
-                                size="small"
-                              />
-                            </TableCell>
-                            <TableCell>{d.dueDate}</TableCell>
-                            <TableCell sx={{ fontWeight: 800 }}>₹{d.amount.toLocaleString()}</TableCell>
-                            <TableCell>{d.interestRate > 0 ? `${d.interestRate}%` : 'Interest Free'}</TableCell>
-                            <TableCell>
-                              <Chip label={d.paidStatus} color={d.paidStatus === 'Paid' ? 'success' : 'default'} size="small" />
-                            </TableCell>
-                            <TableCell align="right">
-                              <Stack direction="row" sx={{ justifyContent: 'flex-end', gap: 0.5 }}>
-                                {d.paidStatus === 'Unpaid' && (
-                                  <Button
-                                    size="small"
-                                    onClick={() => {
-                                      clarityHomeDb.updateDebt(d.id, { paidStatus: 'Paid' });
-                                      triggerToast('Marked debt settled.');
-                                      refreshDb();
-                                    }}
-                                  >
-                                    Mark Settled
-                                  </Button>
-                                )}
-                                <IconButton
+              <Card sx={{ borderRadius: 3, overflow: 'hidden', width: '100%', maxWidth: '100%', minWidth: 0 }}>
+                <Box sx={{ overflowX: 'auto', width: '100%', WebkitOverflowScrolling: 'touch' }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Bill Service</TableCell>
+                        <TableCell>Category</TableCell>
+                        <TableCell>Due Date</TableCell>
+                        <TableCell>Amount</TableCell>
+                        <TableCell>Autopay</TableCell>
+                        <TableCell>Status</TableCell>
+                        <TableCell align="right">Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {bills.map(b => (
+                        <TableRow key={b.id}>
+                          <TableCell sx={{ fontWeight: 700 }}>{b.title}</TableCell>
+                          <TableCell>{b.category}</TableCell>
+                          <TableCell>{b.dueDate}</TableCell>
+                          <TableCell sx={{ fontWeight: 800 }}>₹{b.amount.toLocaleString()}</TableCell>
+                          <TableCell>
+                            <Chip
+                              label={b.autoRecurring ? 'Autopay ON' : 'Manual'}
+                              size="small"
+                              color={b.autoRecurring ? 'primary' : 'default'}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              label={b.status}
+                              color={b.status === 'Paid' ? 'success' : 'warning'}
+                              size="small"
+                            />
+                          </TableCell>
+                          <TableCell align="right">
+                            <Stack direction="row" sx={{ justifyContent: 'flex-end', gap: 0.5 }}>
+                              {b.status === 'Unpaid' && (
+                                <Button
                                   size="small"
-                                  color="error"
                                   onClick={() => {
-                                    clarityHomeDb.deleteDebt(d.id);
-                                    triggerToast('Debt record deleted.');
+                                    clarityHomeDb.updateBill(b.id, { status: 'Paid' });
+                                    triggerToast(`${b.title} Bill payment recorded.`);
                                     refreshDb();
                                   }}
                                 >
-                                  <DeleteIcon fontSize="small" />
-                                </IconButton>
-                              </Stack>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                        {debts.length === 0 && (
-                          <TableRow>
-                            <TableCell colSpan={7} align="center" sx={{ py: 4, color: 'text.secondary' }}>
-                              Zero friendly loans recorded.
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
-                  </Box>
-                </Card>
-              </Box>
-            </Box>
-          )}
-
-          {/* TAB 6: FAMILY & PAYMENTS */}
-          {activeTab === 6 && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {/* Family members tracking */}
-              <Box>
-                <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>Household Family Members</Typography>
-                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '4fr 8fr' }, gap: 3 }}>
-                  <Box sx={{ minWidth: 0 }}>
-                    <Card>
-                      <CardContent sx={{ p: 2 }}>
-                        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2 }}>Add New Member</Typography>
-                        <form onSubmit={handleAddFamilyMember}>
-                          <Stack spacing={2}>
-                            <TextField
-                              fullWidth
-                              label="Member Name"
-                              value={familyMemberForm.name}
-                              onChange={(e) => setFamilyMemberForm({ ...familyMemberForm, name: e.target.value })}
-                            />
-                            <TextField
-                              fullWidth
-                              label="Relationship"
-                              value={familyMemberForm.relationship}
-                              onChange={(e) => setFamilyMemberForm({ ...familyMemberForm, relationship: e.target.value })}
-                            />
-                            <TextField
-                              fullWidth
-                              select
-                              label="Avatar Color Theme"
-                              value={familyMemberForm.avatarColor}
-                              onChange={(e) => setFamilyMemberForm({ ...familyMemberForm, avatarColor: e.target.value })}
-                            >
-                              <MenuItem value="#3f51b5">Indigo Blue</MenuItem>
-                              <MenuItem value="#e91e63">Rose Pink</MenuItem>
-                              <MenuItem value="#ff9800">Alert Orange</MenuItem>
-                              <MenuItem value="#4caf50">Nature Green</MenuItem>
-                              <MenuItem value="#9c27b0">Royal Purple</MenuItem>
-                            </TextField>
-                            <Button type="submit" fullWidth>Add Member</Button>
-                          </Stack>
-                        </form>
-                      </CardContent>
-                    </Card>
-                  </Box>
-
-                  <Box sx={{ minWidth: 0 }}>
-                    <Card sx={{ height: '100%' }}>
-                      <CardContent sx={{ p: 2 }}>
-                        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2 }}>Current Members & Shared Spend</Typography>
-                        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: '1fr 1fr 1fr' }, gap: 2 }}>
-                          {['Self', 'Wife', 'Daughter', 'Father', ...familyMembers.map(m => m.name)].map((name, index) => {
-                            const totalSpent = expenses.filter(e => e.familyMember === name).reduce((sum, e) => sum + e.amount, 0);
-                            return (
-                              <Box key={name}>
-                                <Card variant="outlined" sx={{ p: 1.5, textAlign: 'center' }}>
-                                  <Avatar sx={{ mx: 'auto', mb: 1, bgcolor: CATEGORY_COLORS[index % CATEGORY_COLORS.length] }}>
-                                    {name[0]}
-                                  </Avatar>
-                                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{name}</Typography>
-                                  <Typography variant="caption" color="text.secondary">Spent: ₹{totalSpent.toLocaleString()}</Typography>
-                                  {index >= 4 && (
-                                    <IconButton
-                                      size="small"
-                                      color="error"
-                                      sx={{ mt: 1, display: 'block', mx: 'auto' }}
-                                      onClick={() => {
-                                        const actualMem = familyMembers.find(m => m.name === name);
-                                        if (actualMem) {
-                                          clarityHomeDb.deleteFamilyMember(actualMem.id);
-                                          triggerToast('Family member removed.');
-                                          refreshDb();
-                                        }
-                                      }}
-                                    >
-                                      <DeleteIcon fontSize="small" />
-                                    </IconButton>
-                                  )}
-                                </Card>
-                              </Box>
-                            );
-                          })}
-                        </Box>
-                      </CardContent>
-                    </Card>
-                  </Box>
-                </Box>
-              </Box>
-
-              {/* Payment Methods */}
-              <Box>
-                <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>Payment Methods & Wallet Configuration</Typography>
-                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '4fr 8fr' }, gap: 3 }}>
-                  <Box sx={{ minWidth: 0 }}>
-                    <Card>
-                      <CardContent sx={{ p: 2 }}>
-                        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2 }}>Configure Payment Channel</Typography>
-                        <form onSubmit={handleAddPaymentMethod}>
-                          <Stack spacing={2}>
-                            <TextField
-                              fullWidth
-                              label="Method Name (e.g. ICICI Credit)"
-                              value={paymentMethodForm.name}
-                              onChange={(e) => setPaymentMethodForm({ ...paymentMethodForm, name: e.target.value })}
-                            />
-                            <FormControl fullWidth>
-                              <InputLabel>Channel Type</InputLabel>
-                              <Select
-                                value={paymentMethodForm.type}
-                                label="Channel Type"
-                                onChange={(e) => setPaymentMethodForm({ ...paymentMethodForm, type: e.target.value as any })}
+                                  Mark Paid
+                                </Button>
+                              )}
+                              <IconButton
+                                size="small"
+                                color="error"
+                                onClick={() => {
+                                  clarityHomeDb.deleteBill(b.id);
+                                  triggerToast('Utility tracker deleted.');
+                                  refreshDb();
+                                }}
                               >
-                                <MenuItem value="Cash">Cash</MenuItem>
-                                <MenuItem value="UPI">UPI</MenuItem>
-                                <MenuItem value="Credit Card">Credit Card</MenuItem>
-                                <MenuItem value="Debit Card">Debit Card</MenuItem>
-                                <MenuItem value="Bank Transfer">Bank Transfer</MenuItem>
-                                <MenuItem value="Wallet">Wallet</MenuItem>
-                              </Select>
-                            </FormControl>
-                            <Button type="submit" fullWidth>Link Method</Button>
-                          </Stack>
-                        </form>
-                      </CardContent>
-                    </Card>
-                  </Box>
-
-                  <Box sx={{ minWidth: 0 }}>
-                    <Card sx={{ height: '100%', overflow: 'hidden', width: '100%', maxWidth: '100%', minWidth: 0 }}>
-                      <CardContent sx={{ p: 2 }}>
-                        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2 }}>Linked Methods</Typography>
-                        <Box sx={{ overflowX: 'auto', width: '100%', WebkitOverflowScrolling: 'touch' }}>
-                          <Table size="small">
-                            <TableHead>
-                              <TableRow>
-                                <TableCell>Name</TableCell>
-                                <TableCell>Type</TableCell>
-                                <TableCell align="right">Actions</TableCell>
-                              </TableRow>
-                            </TableHead>
-                            <TableBody>
-                              {paymentMethods.map(pm => (
-                                <TableRow key={pm.id}>
-                                  <TableCell sx={{ fontWeight: 700 }}>{pm.name}</TableCell>
-                                  <TableCell>
-                                    <Chip label={pm.type} size="small" variant="outlined" />
-                                  </TableCell>
-                                  <TableCell align="right">
-                                    <IconButton
-                                      size="small"
-                                      color="error"
-                                      onClick={() => {
-                                        clarityHomeDb.deletePaymentMethod(pm.id);
-                                        triggerToast('Payment method unlinked.');
-                                        refreshDb();
-                                      }}
-                                    >
-                                      <DeleteIcon fontSize="small" />
-                                    </IconButton>
-                                  </TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </Box>
-                      </CardContent>
-                    </Card>
-                  </Box>
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </Stack>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {bills.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={7} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                            No household bills configured. Add water, power, or internet bills.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
                 </Box>
+              </Card>
+            </Box>
+          </Box>
+        )}
+
+        {/* TAB 3: LOANS & EMIS */}
+        {activeTab === 3 && (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>EMI & Loan Management</Typography>
+              <Button startIcon={<AddIcon />} onClick={() => setLoanModalOpen(true)}>Add Loan Tracker</Button>
+            </Box>
+
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 3 }}>
+              {loans.map(loan => (
+                <Box key={loan.id}>
+                  <Card sx={{ borderRadius: 3, border: '1px solid', borderColor: 'divider' }}>
+                    <CardContent sx={{ p: 2.5 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1.5 }}>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{loan.loanName}</Typography>
+                        <Chip label={loan.loanType} size="small" color="primary" variant="outlined" />
+                      </Box>
+
+                      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 2 }}>
+                        <Box>
+                          <Typography variant="caption" color="text.secondary">Total Loan</Typography>
+                          <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>₹{loan.loanAmount.toLocaleString()}</Typography>
+                        </Box>
+                        <Box>
+                          <Typography variant="caption" color="text.secondary">Remaining Principal</Typography>
+                          <Typography variant="subtitle1" sx={{ fontWeight: 800, color: 'primary.main' }}>₹{loan.remainingBalance.toLocaleString()}</Typography>
+                        </Box>
+                        <Box>
+                          <Typography variant="caption" color="text.secondary">Interest Rate</Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 700 }}>{loan.interestRate}% P.A.</Typography>
+                        </Box>
+                        <Box>
+                          <Typography variant="caption" color="text.secondary">Monthly EMI</Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 800, color: 'error.main' }}>₹{loan.emiAmount.toLocaleString()}</Typography>
+                        </Box>
+                      </Box>
+
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>Amortization Progress</Typography>
+                        <LinearProgress
+                          variant="determinate"
+                          value={Math.round(((loan.loanAmount - loan.remainingBalance) / loan.loanAmount) * 100)}
+                          sx={{ height: 8, borderRadius: 4 }}
+                        />
+                      </Box>
+
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="caption" color="text.secondary">Next Due: {loan.dueDate}</Typography>
+                        <Stack direction="row" spacing={1}>
+                          <Button
+                            size="small"
+                            variant="contained"
+                            onClick={() => {
+                              clarityHomeDb.payLoanEMI(loan.id);
+                              triggerToast('EMI payment logged in history ledger.');
+                              refreshDb();
+                            }}
+                          >
+                            Pay EMI
+                          </Button>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => {
+                              clarityHomeDb.deleteLoan(loan.id);
+                              triggerToast('Loan ledger deleted.');
+                              refreshDb();
+                            }}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Stack>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Box>
+              ))}
+              {loans.length === 0 && (
+                <Box sx={{ gridColumn: 'span 12' }}>
+                  <Alert severity="info">Register car loans, house loans, or personal EMIs to keep net-worth calculations balanced.</Alert>
+                </Box>
+              )}
+            </Box>
+          </Box>
+        )}
+
+        {/* TAB 4: INVESTMENTS */}
+        {activeTab === 4 && (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>Wealth Portfolio Tracker</Typography>
+              <Button startIcon={<AddIcon />} onClick={() => setInvestmentModalOpen(true)}>Add Asset Investment</Button>
+            </Box>
+
+            {/* Total portfolio widget */}
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 1fr' }, gap: 2 }}>
+              <Box>
+                <Card>
+                  <CardContent sx={{ p: 2 }}>
+                    <Typography variant="caption" color="text.secondary">Total Invested Principal</Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                      ₹{investments.reduce((s, x) => s + x.investedAmount, 0).toLocaleString()}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Box>
+              <Box>
+                <Card>
+                  <CardContent sx={{ p: 2 }}>
+                    <Typography variant="caption" color="text.secondary">Current Valuation</Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 800, color: 'primary.main' }}>
+                      ₹{investments.reduce((s, x) => s + x.currentValue, 0).toLocaleString()}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Box>
+              <Box>
+                <Card>
+                  <CardContent sx={{ p: 2 }}>
+                    <Typography variant="caption" color="text.secondary">Unrealized Profit/Loss</Typography>
+                    {(() => {
+                      const inv = investments.reduce((s, x) => s + x.investedAmount, 0);
+                      const cur = investments.reduce((s, x) => s + x.currentValue, 0);
+                      const gain = cur - inv;
+                      const percent = inv > 0 ? ((cur - inv) / inv) * 100 : 0;
+                      const color = gain >= 0 ? 'success.main' : 'error.main';
+
+                      return (
+                        <Typography variant="h6" sx={{ fontWeight: 800, color: color }}>
+                          {gain >= 0 ? '+' : ''}₹{gain.toLocaleString()} ({percent.toFixed(1)}%)
+                        </Typography>
+                      );
+                    })()}
+                  </CardContent>
+                </Card>
               </Box>
             </Box>
-          )}
 
-          {/* TAB 7: RECEIPTS & OCR */}
-          {activeTab === 7 && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {/* Investments Table */}
+            <Card sx={{ borderRadius: 3, overflow: 'hidden', width: '100%', maxWidth: '100%', minWidth: 0 }}>
+              <Box sx={{ overflowX: 'auto', width: '100%', WebkitOverflowScrolling: 'touch' }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Asset/SIP Name</TableCell>
+                      <TableCell>Category Type</TableCell>
+                      <TableCell>Invested Amount</TableCell>
+                      <TableCell>Current Value</TableCell>
+                      <TableCell>Net Returns</TableCell>
+                      <TableCell>Hold Period Date</TableCell>
+                      <TableCell align="right">Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {investments.map(i => {
+                      const returns = i.currentValue - i.investedAmount;
+                      const returnsColor = returns >= 0 ? 'success.main' : 'error.main';
+                      return (
+                        <TableRow key={i.id}>
+                          <TableCell sx={{ fontWeight: 700 }}>{i.name}</TableCell>
+                          <TableCell>
+                            <Chip label={i.type} size="small" variant="outlined" />
+                          </TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>₹{i.investedAmount.toLocaleString()}</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>₹{i.currentValue.toLocaleString()}</TableCell>
+                          <TableCell sx={{ fontWeight: 800, color: returnsColor }}>
+                            {returns >= 0 ? '+' : ''}₹{returns.toLocaleString()}
+                          </TableCell>
+                          <TableCell sx={{ fontSize: '0.85rem' }}>{i.purchaseDate}</TableCell>
+                          <TableCell align="right">
+                            <Stack direction="row" sx={{ justifyContent: 'flex-end', gap: 0.5 }}>
+                              <IconButton
+                                size="small"
+                                onClick={() => {
+                                  const newVal = prompt('Enter updated current valuation: ', String(i.currentValue));
+                                  if (newVal) {
+                                    clarityHomeDb.updateInvestment(i.id, { currentValue: Number(newVal) });
+                                    triggerToast('Investment value updated.');
+                                    refreshDb();
+                                  }
+                                }}
+                              >
+                                <RefreshIcon fontSize="small" />
+                              </IconButton>
+                              <IconButton
+                                size="small"
+                                color="error"
+                                onClick={() => {
+                                  clarityHomeDb.deleteInvestment(i.id);
+                                  triggerToast('Investment entry cleared.');
+                                  refreshDb();
+                                }}
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </Stack>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </Box>
+            </Card>
+          </Box>
+        )}
+
+        {/* TAB 5: ASSETS & DEBTS */}
+        {activeTab === 5 && (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {/* Assets Section */}
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="h6" sx={{ fontWeight: 700 }}>Digital Receipt & OCR Extraction Library</Typography>
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  style={{ display: 'none' }}
-                  accept="image/*"
-                  onChange={(e) => {
-                    const files = e.target.files;
-                    if (files && files.length > 0) {
-                      handleMockOcrTrigger(files[0].name);
-                    }
-                  }}
-                />
-                <Button startIcon={<UploadFileIcon />} onClick={() => fileInputRef.current?.click()}>
-                  Scan Receipt Image
-                </Button>
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>Physical & Capital Assets</Typography>
+                <Button startIcon={<AddIcon />} onClick={() => setAssetModalOpen(true)}>Register Asset</Button>
               </Box>
 
-              {ocrScanning && (
-                <Card sx={{ bgcolor: alpha('#4f46e5', 0.02), border: '1px dashed', borderColor: 'primary.main', p: 3 }}>
-                  <Stack spacing={2} sx={{ alignItems: 'center' }}>
-                    <CameraAltIcon className="scan-icon" sx={{ fontSize: 48, color: 'primary.main' }} />
-                    <Typography sx={{ fontWeight: 700 }}>AI Scanner reading: {ocrFileName}...</Typography>
-                    <LinearProgress sx={{ width: '80%', height: 6, borderRadius: 3 }} />
-                    <Typography variant="caption" color="text.secondary">Mapping fields: Vendor, Amount, Tax, and matching categories.</Typography>
-                  </Stack>
-                </Card>
-              )}
-
-              {/* Receipt documents mock gallery */}
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 1fr' }, gap: 3 }}>
-                {[
-                  { title: 'Reliance Smart Food', date: '2026-06-10', amount: '₹4,850', file: 'reliance_rec_8910.jpg', cat: 'Groceries' },
-                  { title: 'Hp Petrol refill station', date: '2026-06-18', amount: '₹2,500', file: 'hp_station_rec_4.png', cat: 'Fuel' },
-                  { title: 'Amazon ergonomics chair', date: '2026-06-15', amount: '₹8,500', file: 'amazon_invoice_221.pdf', cat: 'Shopping' }
-                ].map((rec, i) => (
-                  <Box key={i}>
-                    <Card sx={{ position: 'relative', overflow: 'hidden' }}>
-                      <Box sx={{ height: 120, bgcolor: 'action.hover', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid', borderColor: 'divider' }}>
-                        <ReceiptIcon sx={{ fontSize: 48, color: 'text.disabled' }} />
-                      </Box>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(4, 1fr)' }, gap: 3 }}>
+                {assets.map(ast => (
+                  <Box key={ast.id}>
+                    <Card sx={{ bgcolor: 'action.hover' }}>
                       <CardContent sx={{ p: 2 }}>
-                        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{rec.title}</Typography>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
-                          <Typography variant="caption" color="text.secondary">{rec.date}</Typography>
-                          <Typography variant="caption" sx={{ fontWeight: 700 }} color="primary.main">{rec.amount}</Typography>
-                        </Box>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1.5 }}>
-                          <Chip label={rec.cat} size="small" />
-                          <Button size="small" variant="text" onClick={() => triggerToast(`Downloading file ${rec.file}...`)}>
-                            Download
-                          </Button>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>{ast.assetType}</Typography>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 700, mt: 0.5, mb: 1.5 }}>{ast.name}</Typography>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>₹{ast.estimatedValue.toLocaleString()}</Typography>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => {
+                              clarityHomeDb.deleteAsset(ast.id);
+                              triggerToast('Asset removed.');
+                              refreshDb();
+                            }}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
                         </Box>
                       </CardContent>
                     </Card>
@@ -1878,217 +1528,510 @@ export default function ClarityHomePage() {
                 ))}
               </Box>
             </Box>
-          )}
 
-          {/* TAB 8: REPORTS & EXPORTER */}
-          {activeTab === 8 && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 2 }}>
-                <Typography variant="h6" sx={{ fontWeight: 700 }}>Financial Reports Center</Typography>
-                <Stack direction="row" spacing={1}>
-                  <Button variant="outlined" color="primary" startIcon={<FileDownloadIcon />} onClick={exportToCSV}>
-                    Export CSV
-                  </Button>
-                  <Button variant="outlined" color="primary" startIcon={<FileDownloadIcon />} onClick={exportToExcel}>
-                    Export Excel
-                  </Button>
-                  <Button color="secondary" startIcon={<AssessmentIcon />} onClick={exportToPDF}>
-                    Print PDF
-                  </Button>
-                </Stack>
+            {/* Debts section */}
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>Debts Ledger (Borrowed & Lent)</Typography>
+                <Button startIcon={<AddIcon />} onClick={() => setDebtModalOpen(true)}>Add Debt entry</Button>
               </Box>
 
-              {/* Selection row */}
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
-                <Box>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Report Profile</InputLabel>
-                    <Select value={reportType} label="Report Profile" onChange={(e) => setReportType(e.target.value as any)}>
-                      <MenuItem value="income">Income Report</MenuItem>
-                      <MenuItem value="expense">Expense Report</MenuItem>
-                      <MenuItem value="savings">Savings Goals Summary</MenuItem>
-                      <MenuItem value="budget">Budget Performance Report</MenuItem>
-                      <MenuItem value="family">Family Member Spending Report</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Box>
-                <Box>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Date Range Filter</InputLabel>
-                    <Select value={reportRange} label="Date Range Filter" onChange={(e) => setReportRange(e.target.value as any)}>
-                      <MenuItem value="month">Current Month Only</MenuItem>
-                      <MenuItem value="year">Current Calendar Year</MenuItem>
-                      <MenuItem value="all">Lifetime History logs</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Box>
-              </Box>
-
-              {/* Data Preview */}
-              <Card sx={{ borderRadius: 3, width: '100%', maxWidth: '100%', minWidth: 0, overflow: 'hidden' }}>
-                <CardContent sx={{ p: 0 }}>
-                  <Typography variant="caption" sx={{ display: 'block', p: 2, borderBottom: '1px solid', borderColor: 'divider', fontWeight: 700, textTransform: 'uppercase' }}>
-                    Document Table Preview ({generatedReportData.length} records generated)
-                  </Typography>
-                  <Box sx={{ overflowX: 'auto', width: '100%', WebkitOverflowScrolling: 'touch' }}>
-                    <Table size="small">
-                      <TableHead>
-                        <TableRow>
-                          {generatedReportData.length > 0 &&
-                            Object.keys(generatedReportData[0]).map(key => (
-                              <TableCell key={key}>{key}</TableCell>
-                            ))}
+              <Card sx={{ borderRadius: 3, overflow: 'hidden', width: '100%', maxWidth: '100%', minWidth: 0 }}>
+                <Box sx={{ overflowX: 'auto', width: '100%', WebkitOverflowScrolling: 'touch' }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Person Name</TableCell>
+                        <TableCell>Relation Type</TableCell>
+                        <TableCell>Due Date</TableCell>
+                        <TableCell>Amount</TableCell>
+                        <TableCell>Interest Rate</TableCell>
+                        <TableCell>Status</TableCell>
+                        <TableCell align="right">Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {debts.map(d => (
+                        <TableRow key={d.id}>
+                          <TableCell sx={{ fontWeight: 700 }}>{d.personName}</TableCell>
+                          <TableCell>
+                            <Chip
+                              label={d.type === 'borrowed' ? 'Borrowed' : 'Lent Money'}
+                              color={d.type === 'borrowed' ? 'error' : 'success'}
+                              size="small"
+                            />
+                          </TableCell>
+                          <TableCell>{d.dueDate}</TableCell>
+                          <TableCell sx={{ fontWeight: 800 }}>₹{d.amount.toLocaleString()}</TableCell>
+                          <TableCell>{d.interestRate > 0 ? `${d.interestRate}%` : 'Interest Free'}</TableCell>
+                          <TableCell>
+                            <Chip label={d.paidStatus} color={d.paidStatus === 'Paid' ? 'success' : 'default'} size="small" />
+                          </TableCell>
+                          <TableCell align="right">
+                            <Stack direction="row" sx={{ justifyContent: 'flex-end', gap: 0.5 }}>
+                              {d.paidStatus === 'Unpaid' && (
+                                <Button
+                                  size="small"
+                                  onClick={() => {
+                                    clarityHomeDb.updateDebt(d.id, { paidStatus: 'Paid' });
+                                    triggerToast('Marked debt settled.');
+                                    refreshDb();
+                                  }}
+                                >
+                                  Mark Settled
+                                </Button>
+                              )}
+                              <IconButton
+                                size="small"
+                                color="error"
+                                onClick={() => {
+                                  clarityHomeDb.deleteDebt(d.id);
+                                  triggerToast('Debt record deleted.');
+                                  refreshDb();
+                                }}
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </Stack>
+                          </TableCell>
                         </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {generatedReportData.map((row, idx) => (
-                          <TableRow key={idx}>
-                            {Object.values(row).map((val, cellIdx) => (
-                              <TableCell key={cellIdx}>{String(val)}</TableCell>
-                            ))}
-                          </TableRow>
-                        ))}
-                        {generatedReportData.length === 0 && (
-                          <TableRow>
-                            <TableCell align="center" sx={{ py: 4 }}>No data matched report arguments.</TableCell>
-                          </TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
-                  </Box>
-                </CardContent>
+                      ))}
+                      {debts.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={7} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                            Zero friendly loans recorded.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </Box>
               </Card>
             </Box>
-          )}
+          </Box>
+        )}
 
-          {/* TAB 9: SETTINGS & LOGS */}
-          {activeTab === 9 && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {/* Profile Config */}
-              <Card>
-                <CardContent sx={{ p: 2.5 }}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <SecurityIcon color="primary" /> Profile & System Configuration
-                  </Typography>
-                  {settings && (
-                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 3 }}>
-                      <Box>
-                        <FormControl fullWidth>
-                          <InputLabel>Base Accounting Currency</InputLabel>
-                          <Select
-                            value={settings.currency}
-                            label="Base Accounting Currency"
+        {/* TAB 6: FAMILY & PAYMENTS */}
+        {activeTab === 6 && (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {/* Family members tracking */}
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>Household Family Members</Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '4fr 8fr' }, gap: 3 }}>
+                <Box sx={{ minWidth: 0 }}>
+                  <Card>
+                    <CardContent sx={{ p: 2 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2 }}>Add New Member</Typography>
+                      <form onSubmit={handleAddFamilyMember}>
+                        <Stack spacing={2}>
+                          <TextField
+                            fullWidth
+                            label="Member Name"
+                            value={familyMemberForm.name}
+                            onChange={(e) => setFamilyMemberForm({ ...familyMemberForm, name: e.target.value })}
+                          />
+                          <TextField
+                            fullWidth
+                            label="Relationship"
+                            value={familyMemberForm.relationship}
+                            onChange={(e) => setFamilyMemberForm({ ...familyMemberForm, relationship: e.target.value })}
+                          />
+                          <TextField
+                            fullWidth
+                            select
+                            label="Avatar Color Theme"
+                            value={familyMemberForm.avatarColor}
+                            onChange={(e) => setFamilyMemberForm({ ...familyMemberForm, avatarColor: e.target.value })}
+                          >
+                            <MenuItem value="#3f51b5">Indigo Blue</MenuItem>
+                            <MenuItem value="#e91e63">Rose Pink</MenuItem>
+                            <MenuItem value="#ff9800">Alert Orange</MenuItem>
+                            <MenuItem value="#4caf50">Nature Green</MenuItem>
+                            <MenuItem value="#9c27b0">Royal Purple</MenuItem>
+                          </TextField>
+                          <Button type="submit" fullWidth>Add Member</Button>
+                        </Stack>
+                      </form>
+                    </CardContent>
+                  </Card>
+                </Box>
+
+                <Box sx={{ minWidth: 0 }}>
+                  <Card sx={{ height: '100%' }}>
+                    <CardContent sx={{ p: 2 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2 }}>Current Members & Shared Spend</Typography>
+                      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: '1fr 1fr 1fr' }, gap: 2 }}>
+                        {['Self', 'Wife', 'Daughter', 'Father', ...familyMembers.map(m => m.name)].map((name, index) => {
+                          const totalSpent = expenses.filter(e => e.familyMember === name).reduce((sum, e) => sum + e.amount, 0);
+                          return (
+                            <Box key={name}>
+                              <Card variant="outlined" sx={{ p: 1.5, textAlign: 'center' }}>
+                                <Avatar sx={{ mx: 'auto', mb: 1, bgcolor: CATEGORY_COLORS[index % CATEGORY_COLORS.length] }}>
+                                  {name[0]}
+                                </Avatar>
+                                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{name}</Typography>
+                                <Typography variant="caption" color="text.secondary">Spent: ₹{totalSpent.toLocaleString()}</Typography>
+                                {index >= 4 && (
+                                  <IconButton
+                                    size="small"
+                                    color="error"
+                                    sx={{ mt: 1, display: 'block', mx: 'auto' }}
+                                    onClick={() => {
+                                      const actualMem = familyMembers.find(m => m.name === name);
+                                      if (actualMem) {
+                                        clarityHomeDb.deleteFamilyMember(actualMem.id);
+                                        triggerToast('Family member removed.');
+                                        refreshDb();
+                                      }
+                                    }}
+                                  >
+                                    <DeleteIcon fontSize="small" />
+                                  </IconButton>
+                                )}
+                              </Card>
+                            </Box>
+                          );
+                        })}
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Box>
+              </Box>
+            </Box>
+
+            {/* Payment Methods */}
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>Payment Methods & Wallet Configuration</Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '4fr 8fr' }, gap: 3 }}>
+                <Box sx={{ minWidth: 0 }}>
+                  <Card>
+                    <CardContent sx={{ p: 2 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2 }}>Configure Payment Channel</Typography>
+                      <form onSubmit={handleAddPaymentMethod}>
+                        <Stack spacing={2}>
+                          <TextField
+                            fullWidth
+                            label="Method Name (e.g. ICICI Credit)"
+                            value={paymentMethodForm.name}
+                            onChange={(e) => setPaymentMethodForm({ ...paymentMethodForm, name: e.target.value })}
+                          />
+                          <FormControl fullWidth>
+                            <InputLabel>Channel Type</InputLabel>
+                            <Select
+                              value={paymentMethodForm.type}
+                              label="Channel Type"
+                              onChange={(e) => setPaymentMethodForm({ ...paymentMethodForm, type: e.target.value as any })}
+                            >
+                              <MenuItem value="Cash">Cash</MenuItem>
+                              <MenuItem value="UPI">UPI</MenuItem>
+                              <MenuItem value="Credit Card">Credit Card</MenuItem>
+                              <MenuItem value="Debit Card">Debit Card</MenuItem>
+                              <MenuItem value="Bank Transfer">Bank Transfer</MenuItem>
+                              <MenuItem value="Wallet">Wallet</MenuItem>
+                            </Select>
+                          </FormControl>
+                          <Button type="submit" fullWidth>Link Method</Button>
+                        </Stack>
+                      </form>
+                    </CardContent>
+                  </Card>
+                </Box>
+
+                <Box sx={{ minWidth: 0 }}>
+                  <Card sx={{ height: '100%', overflow: 'hidden', width: '100%', maxWidth: '100%', minWidth: 0 }}>
+                    <CardContent sx={{ p: 2 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2 }}>Linked Methods</Typography>
+                      <Box sx={{ overflowX: 'auto', width: '100%', WebkitOverflowScrolling: 'touch' }}>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Name</TableCell>
+                              <TableCell>Type</TableCell>
+                              <TableCell align="right">Actions</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {paymentMethods.map(pm => (
+                              <TableRow key={pm.id}>
+                                <TableCell sx={{ fontWeight: 700 }}>{pm.name}</TableCell>
+                                <TableCell>
+                                  <Chip label={pm.type} size="small" variant="outlined" />
+                                </TableCell>
+                                <TableCell align="right">
+                                  <IconButton
+                                    size="small"
+                                    color="error"
+                                    onClick={() => {
+                                      clarityHomeDb.deletePaymentMethod(pm.id);
+                                      triggerToast('Payment method unlinked.');
+                                      refreshDb();
+                                    }}
+                                  >
+                                    <DeleteIcon fontSize="small" />
+                                  </IconButton>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Box>
+              </Box>
+            </Box>
+          </Box>
+        )}
+
+
+
+        {/* TAB 7: REPORTS & EXPORTER */}
+        {activeTab === 7 && (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>Financial Reports Center</Typography>
+              <Stack direction="row" spacing={1}>
+                <Button variant="outlined" color="primary" startIcon={<FileDownloadIcon />} onClick={exportToCSV}>
+                  Export CSV
+                </Button>
+                <Button variant="outlined" color="primary" startIcon={<FileDownloadIcon />} onClick={exportToExcel}>
+                  Export Excel
+                </Button>
+                <Button color="secondary" startIcon={<AssessmentIcon />} onClick={exportToPDF}>
+                  Print PDF
+                </Button>
+              </Stack>
+            </Box>
+
+            {/* Selection row */}
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+              <Box>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Report Profile</InputLabel>
+                  <Select value={reportType} label="Report Profile" onChange={(e) => setReportType(e.target.value as any)}>
+                    <MenuItem value="income">Income Report</MenuItem>
+                    <MenuItem value="expense">Expense Report</MenuItem>
+                    <MenuItem value="savings">Savings Goals Summary</MenuItem>
+                    <MenuItem value="budget">Budget Performance Report</MenuItem>
+                    <MenuItem value="family">Family Member Spending Report</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
+              <Box>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Date Range Filter</InputLabel>
+                  <Select value={reportRange} label="Date Range Filter" onChange={(e) => setReportRange(e.target.value as any)}>
+                    <MenuItem value="month">Current Month Only</MenuItem>
+                    <MenuItem value="year">Current Calendar Year</MenuItem>
+                    <MenuItem value="all">Lifetime History logs</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
+            </Box>
+
+            {/* Data Preview */}
+            <Card sx={{ borderRadius: 3, width: '100%', maxWidth: '100%', minWidth: 0, overflow: 'hidden' }}>
+              <CardContent sx={{ p: 0 }}>
+                <Typography variant="caption" sx={{ display: 'block', p: 2, borderBottom: '1px solid', borderColor: 'divider', fontWeight: 700, textTransform: 'uppercase' }}>
+                  Document Table Preview ({generatedReportData.length} records generated)
+                </Typography>
+                <Box sx={{ overflowX: 'auto', width: '100%', WebkitOverflowScrolling: 'touch' }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        {generatedReportData.length > 0 &&
+                          Object.keys(generatedReportData[0]).map(key => (
+                            <TableCell key={key}>{key}</TableCell>
+                          ))}
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {generatedReportData.map((row, idx) => (
+                        <TableRow key={idx}>
+                          {Object.values(row).map((val, cellIdx) => (
+                            <TableCell key={cellIdx}>{String(val)}</TableCell>
+                          ))}
+                        </TableRow>
+                      ))}
+                      {generatedReportData.length === 0 && (
+                        <TableRow>
+                          <TableCell align="center" sx={{ py: 4 }}>No data matched report arguments.</TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </Box>
+              </CardContent>
+            </Card>
+          </Box>
+        )}
+
+        {/* TAB 8: SETTINGS & LOGS */}
+        {activeTab === 8 && (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {/* Profile Config */}
+            <Card>
+              <CardContent sx={{ p: 2.5 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <SecurityIcon color="primary" /> Profile & System Configuration
+                </Typography>
+                {settings && (
+                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 3 }}>
+                    <Box>
+                      <FormControl fullWidth>
+                        <InputLabel>Base Accounting Currency</InputLabel>
+                        <Select
+                          value={settings.currency}
+                          label="Base Accounting Currency"
+                          onChange={(e) => {
+                            const newSet = { ...settings, currency: e.target.value };
+                            clarityHomeDb.saveSettings(newSet);
+                            setSettings(newSet);
+                            triggerToast('Base currency updated.');
+                          }}
+                        >
+                          <MenuItem value="INR">Indian Rupee (₹)</MenuItem>
+                          <MenuItem value="USD">US Dollar ($)</MenuItem>
+                          <MenuItem value="EUR">Euro (€)</MenuItem>
+                          <MenuItem value="GBP">British Pound (£)</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Box>
+                    <Box>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={settings.notificationsEnabled}
                             onChange={(e) => {
-                              const newSet = { ...settings, currency: e.target.value };
+                              const newSet = { ...settings, notificationsEnabled: e.target.checked };
                               clarityHomeDb.saveSettings(newSet);
                               setSettings(newSet);
-                              triggerToast('Base currency updated.');
+                              triggerToast('Notification settings toggled.');
                             }}
-                          >
-                            <MenuItem value="INR">Indian Rupee (₹)</MenuItem>
-                            <MenuItem value="USD">US Dollar ($)</MenuItem>
-                            <MenuItem value="EUR">Euro (€)</MenuItem>
-                            <MenuItem value="GBP">British Pound (£)</MenuItem>
-                          </Select>
-                        </FormControl>
-                      </Box>
-                      <Box>
-                        <FormControlLabel
-                          control={
-                            <Switch
-                              checked={settings.notificationsEnabled}
-                              onChange={(e) => {
-                                const newSet = { ...settings, notificationsEnabled: e.target.checked };
-                                clarityHomeDb.saveSettings(newSet);
-                                setSettings(newSet);
-                                triggerToast('Notification settings toggled.');
-                              }}
-                            />
-                          }
-                          label="Enable Budget Exceeded Alerts"
-                        />
-                      </Box>
-                      <Box>
-                        <FormControlLabel
-                          control={
-                            <Switch
-                              checked={settings.twoFactorEnabled}
-                              onChange={(e) => {
-                                const newSet = { ...settings, twoFactorEnabled: e.target.checked };
-                                clarityHomeDb.saveSettings(newSet);
-                                setSettings(newSet);
-                                triggerToast('Security setting updated.');
-                              }}
-                            />
-                          }
-                          label="Require 2FA Authentication (Mock)"
-                        />
-                      </Box>
+                          />
+                        }
+                        label="Enable Budget Exceeded Alerts"
+                      />
                     </Box>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Data backups */}
-              <Card>
-                <CardContent sx={{ p: 2.5 }}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2 }}>Database Backup, Restore & Reset</Typography>
-                  <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 2, mb: 2 }}>
-                    <Button variant="outlined" startIcon={<FileDownloadIcon />} onClick={handleBackupDownload}>
-                      Download Database JSON
-                    </Button>
-                    <Button variant="outlined" component="label" startIcon={<UploadFileIcon />}>
-                      Restore JSON Backup
-                      <input type="file" accept=".json" hidden onChange={handleBackupUpload} />
-                    </Button>
-                  </Stack>
-                  <Alert severity="warning" action={
-                    <Button color="error" size="small" variant="contained" onClick={() => {
-                      if (confirm('Reset all financial records to default starting seeds?')) {
-                        clarityHomeDb.resetAllData();
-                        triggerToast('Database re-seeded successfully.', 'warning');
-                        refreshDb();
-                      }
-                    }}>
-                      Reset Database
-                    </Button>
-                  }>
-                    Clearing or resetting data wipes all custom ledger entries, goals, loans, and settings. Save a JSON backup first.
-                  </Alert>
-                </CardContent>
-              </Card>
-
-              {/* Audit Logs */}
-              <Box>
-                <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <HistoryIcon color="primary" /> System Activity & Security Logs
-                </Typography>
-                <Card sx={{ borderRadius: 3, overflow: 'hidden', width: '100%', maxWidth: '100%', minWidth: 0 }}>
-                  <Box sx={{ overflowX: 'auto', width: '100%', maxHeight: 300, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                    <Table size="small">
-                      <TableHead>
-                        <TableRow>
-                          <TableCell>Timestamp</TableCell>
-                          <TableCell>Action performed</TableCell>
-                          <TableCell>Log details</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {activityLogs.map((log) => (
-                          <TableRow key={log.id}>
-                            <TableCell sx={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{log.timestamp}</TableCell>
-                            <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>{log.action}</TableCell>
-                            <TableCell sx={{ fontSize: '0.85rem' }}>{log.details}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                    <Box>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={settings.twoFactorEnabled}
+                            onChange={(e) => {
+                              const newSet = { ...settings, twoFactorEnabled: e.target.checked };
+                              clarityHomeDb.saveSettings(newSet);
+                              setSettings(newSet);
+                              triggerToast('Security setting updated.');
+                            }}
+                          />
+                        }
+                        label="Require 2FA Authentication (Mock)"
+                      />
+                    </Box>
                   </Box>
-                </Card>
-              </Box>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Login Credentials & Security */}
+            <Card>
+              <CardContent sx={{ p: 2.5 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <SecurityIcon color="primary" /> Login Credentials & Security
+                </Typography>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 3 }}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <TextField
+                      fullWidth
+                      label="New Username (Email)"
+                      value={newUsername}
+                      onChange={(e) => setNewUsername(e.target.value)}
+                    />
+                    <TextField
+                      fullWidth
+                      type="password"
+                      label="New Password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                    />
+                    <Button
+                      variant="contained"
+                      onClick={handleResetCredentials}
+                      disabled={!newUsername.trim() || !newPassword.trim()}
+                      sx={{ mt: 1, textTransform: 'none', alignSelf: 'flex-start' }}
+                    >
+                      Reset Credentials
+                    </Button>
+                  </Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <Typography variant="body2" color="text.secondary">
+                      Update your enterprise portal login credentials directly. Please note that changing your credentials will update your account credentials across all tuition portal modules, and you will need to log in again using your new username and password.
+                    </Typography>
+                  </Box>
+                </Box>
+              </CardContent>
+            </Card>
+
+            {/* Data backups */}
+            <Card>
+              <CardContent sx={{ p: 2.5 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2 }}>Database Backup, Restore & Reset</Typography>
+                <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 2, mb: 2 }}>
+                  <Button variant="outlined" startIcon={<FileDownloadIcon />} onClick={handleBackupDownload}>
+                    Download Database JSON
+                  </Button>
+                  <Button variant="outlined" component="label" startIcon={<UploadFileIcon />}>
+                    Restore JSON Backup
+                    <input type="file" accept=".json" hidden onChange={handleBackupUpload} />
+                  </Button>
+                </Stack>
+                <Alert severity="warning" action={
+                  <Button color="error" size="small" variant="contained" onClick={() => {
+                    if (confirm('Reset all financial records to default starting seeds?')) {
+                      clarityHomeDb.resetAllData();
+                      triggerToast('Database re-seeded successfully.', 'warning');
+                      refreshDb();
+                    }
+                  }}>
+                    Reset Database
+                  </Button>
+                }>
+                  Clearing or resetting data wipes all custom ledger entries, goals, loans, and settings. Save a JSON backup first.
+                </Alert>
+              </CardContent>
+            </Card>
+
+            {/* Audit Logs */}
+            <Box>
+              <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <HistoryIcon color="primary" /> System Activity & Security Logs
+              </Typography>
+              <Card sx={{ borderRadius: 3, overflow: 'hidden', width: '100%', maxWidth: '100%', minWidth: 0 }}>
+                <Box sx={{ overflowX: 'auto', width: '100%', maxHeight: 300, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Timestamp</TableCell>
+                        <TableCell>Action performed</TableCell>
+                        <TableCell>Log details</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {activityLogs.map((log) => (
+                        <TableRow key={log.id}>
+                          <TableCell sx={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{log.timestamp}</TableCell>
+                          <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>{log.action}</TableCell>
+                          <TableCell sx={{ fontSize: '0.85rem' }}>{log.details}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </Box>
+              </Card>
             </Box>
-          )}
-        </Box>
+          </Box>
+        )}
       </Box>
 
       {/* ALL MODAL DIALOGS BELOW */}
@@ -2634,6 +2577,42 @@ export default function ClarityHomePage() {
             <Button type="submit">Save Entry</Button>
           </DialogActions>
         </form>
+      </Dialog>
+
+      {/* CURRENT BALANCE BREAKDOWN DIALOG */}
+      <Dialog open={balanceModalOpen} onClose={() => setBalanceModalOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, pb: 1 }}>Remaining Balance Details</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="body1" color="text.secondary">Total Income</Typography>
+              <Typography variant="body1" sx={{ fontWeight: 700, color: '#10b981' }}>
+                ₹{dashboardStats.totalIncome.toLocaleString('en-IN')}
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="body1" color="text.secondary">Total Expenses</Typography>
+              <Typography variant="body1" sx={{ fontWeight: 700, color: '#ef4444' }}>
+                - ₹{dashboardStats.totalExpenses.toLocaleString('en-IN')}
+              </Typography>
+            </Box>
+            <Divider sx={{ my: 1 }} />
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>Remaining Balance</Typography>
+              <Typography variant="h6" sx={{ fontWeight: 800, color: '#4f46e5' }}>
+                ₹{dashboardStats.currentBalance.toLocaleString('en-IN')}
+              </Typography>
+            </Box>
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, textAlign: 'center', display: 'block' }}>
+              Remaining balance calculated in real-time as total registered income minus total registered expenses.
+            </Typography>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setBalanceModalOpen(false)} variant="contained" fullWidth sx={{ textTransform: 'none', borderRadius: 2 }}>
+            Close Details
+          </Button>
+        </DialogActions>
       </Dialog>
     </Box>
   );

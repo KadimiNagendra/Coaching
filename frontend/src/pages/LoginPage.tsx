@@ -72,15 +72,6 @@ export default function LoginPage() {
               <Button type="submit" size="large" fullWidth sx={{ py: 1.25, mt: 1 }}>
                 Sign in
               </Button>
-              <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center', display: 'block' }}>
-                Teacher: teacher@example.com / Admin@123
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center', display: 'block' }}>
-                Parent: parent@example.com / Parent@123
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center', display: 'block' }}>
-                Student: student@example.com / Student@123
-              </Typography>
             </Stack>
           </CardContent>
         </Card>

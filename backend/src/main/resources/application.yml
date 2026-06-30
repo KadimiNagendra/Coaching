@@ -24,7 +24,7 @@ app:
   jwt-secret: ${JWT_SECRET:change-this-development-secret-change-this-development-secret}
   jwt-expiration-minutes: ${JWT_EXPIRATION_MINUTES:720}
   upload-dir: ${UPLOAD_DIR:uploads}
-  cors-origins: ${CORS_ORIGINS:http://localhost:5173,http://localhost:3000}
+  cors-origins: ${CORS_ORIGINS:*}
   seed-demo-data: ${APP_SEED_DEMO_DATA:false}
   bootstrap-admin:
     enabled: ${APP_BOOTSTRAP_ADMIN_ENABLED:true}

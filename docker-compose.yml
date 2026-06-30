@@ -27,7 +27,7 @@ services:
       SPRING_DATASOURCE_USERNAME: tuition
       SPRING_DATASOURCE_PASSWORD: tuition
       JWT_SECRET: replace-with-a-long-random-production-secret
-      CORS_ORIGINS: http://localhost:3000,http://localhost:5173
+      CORS_ORIGINS: "*"
       APP_SEED_DEMO_DATA: "false"
       APP_BOOTSTRAP_ADMIN_ENABLED: "true"
       APP_BOOTSTRAP_ADMIN_USERNAME: admin
